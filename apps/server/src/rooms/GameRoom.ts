@@ -10,6 +10,7 @@ import {
   fireWeapon,
   type InputCmd, type AABB, type WeaponId,
 } from '@fps/shared';
+import { metrics, log } from '../metrics.js';
 
 interface PlayerEntity {
   player: Player;
@@ -25,6 +26,8 @@ interface PlayerEntity {
   lastFireAt: number;
   /** Position history for lag compensation. */
   history: { t: number; x: number; y: number; z: number; height: number }[];
+  /** RTT diukur via ping/pong (Fase 6) — dipakai lag compensation. */
+  rttMs: number;
 }
 
 const world: AABB[] = GREYBOX.boxes;
@@ -63,7 +66,7 @@ export class GameRoom extends Room<any> {
       if (!text) return;
       this.broadcast('chat', { from: p.nickname, text, t: Date.now() });
     });
-    console.log(`[GameRoom] created (mode=${this.state.mode})`);
+    console.log(JSON.stringify({ ts: new Date().toISOString(), level: 'info', event: 'room_create', roomId: this.roomId, mode: this.state.mode }));
   }
 
   override onJoin(client: Client, options: { nickname?: string } = {}) {
@@ -79,11 +82,20 @@ export class GameRoom extends Room<any> {
       sim: newPlayerSimState(spawn[0], spawn[1], spawn[2]),
       cmds: [], hp: MAX_HP, deadUntil: 0, spawnProtectUntil: Date.now() + SPAWN_PROTECT_MS,
       reloadUntil: 0, ammo: WEAPONS.pistol.magSize, reserve: -1, weapon: 'pistol',
-      lastFireAt: 0, history: [],
+      lastFireAt: 0, history: [], rttMs: 200,
     });
     client.send('welcome', { sessionId: client.sessionId });
     this.broadcast('chat', { from: 'system', text: `${nick} joined`, t: Date.now() });
-    console.log(`[GameRoom] ${client.sessionId} (${nick}, team ${p.team}) joined`);
+    log('info', 'room_join', { roomId: this.roomId, sessionId: client.sessionId, nick, team: p.team, players: this.entities.size });
+    // ping loop: ukur RTT tiap 2 dtk (dipakai lag comp)
+    this.clock.setInterval(() => {
+      const t0 = Date.now();
+      client.send('ping', { t: t0 });
+    }, 2000);
+    this.onMessage('pong', (c: Client, data: { t: number }) => {
+      const ent = this.entities.get(c.sessionId);
+      if (ent) ent.rttMs = Math.max(1, Date.now() - data.t);
+    });
   }
 
   override onLeave(client: Client) {
@@ -91,7 +103,7 @@ export class GameRoom extends Room<any> {
     this.state.players.delete(client.sessionId);
     this.entities.delete(client.sessionId);
     if (p) this.broadcast('chat', { from: 'system', text: `${p.nickname} left`, t: Date.now() });
-    console.log(`[GameRoom] ${client.sessionId} left`);
+    log('info', 'room_leave', { roomId: this.roomId, sessionId: client.sessionId, nick: p?.nickname, players: this.entities.size });
   }
 
   // ---------- match flow ----------
@@ -152,6 +164,7 @@ export class GameRoom extends Room<any> {
   // ---------- simulation ----------
 
   private step() {
+    const t0 = performance.now();
     const dt = TICK_MS / 1000;
     const now = Date.now();
     this.state.serverTick++;
@@ -201,6 +214,7 @@ export class GameRoom extends Room<any> {
         this.handleFire(e, cmd, now);
       }
     }
+    metrics.recordTick(performance.now() - t0);
   }
 
   /** Server-side hitscan with lag compensation (rewind targets to shooter's view time). */
@@ -211,7 +225,7 @@ export class GameRoom extends Room<any> {
     shooter.player.ammo = shooter.ammo;
 
     const shooterId = this.sessionIdOf(shooter);
-    const shooterRttMs = 200; // TODO: ping/pong measurement (blueprint default)
+    const shooterRttMs = shooter.rttMs;
     const viewTime = now - Math.min(MAX_REWIND_MS, shooterRttMs / 2 + 100);
 
     const targets: { x: number; y: number; z: number; height: number; id: string }[] = [];
@@ -288,7 +302,7 @@ export class GameRoom extends Room<any> {
       headshot: false,
       t: Date.now(),
     });
-    console.log(`[GameRoom] kill: ${killer?.nickname ?? '?'} -> ${victim.nickname} (${weapon})`);
+    console.log(JSON.stringify({ ts: new Date().toISOString(), level: 'info', event: 'room_kill', roomId: this.roomId, killer: killer?.nickname ?? '?', victim: victim.nickname, weapon }));
   }
 
   private respawn(e: PlayerEntity) {

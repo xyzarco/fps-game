@@ -122,6 +122,9 @@ export class Game {
       const me = this.net.latest?.players.get(this.net.sessionId!);
       if (me && data.victim === me.nickname) this.showDeath();
     });
+    this.net.room!.onMessage('ping', (data: { t: number }) => {
+      this.net.room!.send('pong', data); // echo → server ukur RTT
+    });
     this.net.room!.onMessage('chat', (data: { from: string; text: string }) => {
       this.addChatLine(data.from, data.text);
     });
