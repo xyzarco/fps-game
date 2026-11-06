@@ -84,7 +84,7 @@ export class LocalGameHost implements GameHost {
     this.startWarmup();
 
     // bot dummy (B1): berdiri/berjalan acak, bisa ditembak, mati, respawn
-    this.bots = new BotManager(this, room, opts.botCount ?? 7);
+    this.bots = new BotManager(this, room, opts.botCount ?? 7, (opts.mode === 'tdm' ? 'tdm' : 'ffa'), (opts.botDifficulty ?? 'normal') as 'easy' | 'normal' | 'hard' | 'insane');
     for (const _b of this.bots.bots.values()) {
       // bot ditambahkan sebagai entity + state
     }

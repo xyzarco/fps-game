@@ -90,3 +90,10 @@ Menu utama (nickname/mode/room code + localStorage), Quick Play & join by code (
 - Test `ai-aim.test.ts` (5): turn clamp konvergensi, error decay saat tracking, error naik dgn jarak, fire gate, weapon select — suite 27/27 hijau.
 - Test `ai-combat.test.ts`: headless bot-vs-bot 30s (4 hard vs 4 easy) — kills 3-200 range (duel hidup, bukan aimbot), 0 NaN, 0 out-of-bounds ✓.
 - In-game 35 detik: kill feed 'Vex ⚔ pistol → Rook', skor tersebar (Tango 2/1, Nova 1/1, Onyx 1/0), player ditembak bot (deaths 1), state campur combat/retreat → semua bot combat saat sehat. Kriteria BOTS.md: duel masuk akal ✓, retreat HP rendah ✓, no friendly fire (FF off) ✓.
+
+## Fase B5 — Kesulitan, Mode & Menu (selesai)
+- Menu: dropdown kesulitan bot (Easy/Normal/Hard/Insane) + jumlah bot + mode FFA/TDM — diteruskan ke LocalGameHost → BotManager → BotBrain (DIFFICULTY preset B3).
+- TDM komposisi tim (BOTS.md 5.3): bot genap → tim A (rekan player), ganjil → tim B; `BotWorldView.allies` (set id satu tim) dikecualikan dari persepsi/targeting → bot tidak membidik rekan (friendly fire off sudah di level host).
+- Bukti in-game: TDM 6 bot → tim A [player,Vex,Nova,Onyx] vs tim B [Rook,Jinx,Sable]; kill legal antar tim (Jinx→Nova); verifikasi memory bot: targetingAlly kosong di semua 7 entitas ✓; teamScoreA/B bertambah.
+- Suite 27/27 hijau, build sukses.
+- Catatan: Survival/Wave & Practice Range tetap backlog opsional (BOTS.md 'opsional') — dicatat di docs/BACKLOG.md.

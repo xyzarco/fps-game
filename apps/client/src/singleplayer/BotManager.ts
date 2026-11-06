@@ -24,20 +24,22 @@ export class BotManager {
     private room: LocalRoom,
     count: number,
     teamMode: 'ffa' | 'tdm' = 'ffa',
+    difficulty: 'easy' | 'normal' | 'hard' | 'insane' = 'normal',
   ) {
-    void this.initNav(count, teamMode);
+    void this.initNav(count, teamMode, difficulty);
   }
 
   /** Bake navmesh async; bot dulu dummy-wander sampai navmesh siap. */
-  private async initNav(count: number, teamMode: 'ffa' | 'tdm') {
+  private async initNav(count: number, teamMode: 'ffa' | 'tdm', difficulty: 'easy' | 'normal' | 'hard' | 'insane') {
     this.nav = new NavService();
     await this.nav.init();
     if (this.disposed) return;
     for (let i = 0; i < count; i++) {
       const name = BOT_NAMES[i % BOT_NAMES.length]! + (i >= BOT_NAMES.length ? String(Math.floor(i / BOT_NAMES.length) + 1) : '');
-      const team = teamMode === 'tdm' ? 1 : 0;
+      // TDM: bot genap tim A (rekan player), ganjil tim B (BOTS.md 5.3)
+      const team = teamMode === 'tdm' ? (i % 2 === 0 ? 0 : 1) : 0;
       const e = this.host.addEntity(`bot_${i}`, name, true, team);
-      const brain = new BotBrain(e.id, [e.sim.x, e.sim.y, e.sim.z], 1000 + i * 7919, this.nav);
+      const brain = new BotBrain(e.id, [e.sim.x, e.sim.y, e.sim.z], 1000 + i * 7919, this.nav, difficulty);
       this.bots.set(e.id, { id: e.id, name, team, brain, seq: 0 });
     }
     this.navReady = true;
@@ -58,7 +60,12 @@ export class BotManager {
       br.sim.vx = e.sim.vx; br.sim.vz = e.sim.vz;
       br.sim.height = e.sim.height; br.sim.crouch = e.sim.crouch;
       b.brain.reportStatus(e.hp, { pistol: e.ammo });
-      const cmd = b.brain.update({ others, sounds: BotBrain.soundBus.drain(now) }, now, dt, ++b.seq);
+      // BOTS.md 5.3: allies = semua entity satu tim (termasuk player di tim sama)
+      const allies = new Set<string>();
+      for (const [oid, oe] of this.host.entitiesAll()) {
+        if (oe.team === b.team) allies.add(oid);
+      }
+      const cmd = b.brain.update({ others, sounds: BotBrain.soundBus.drain(now), allies }, now, dt, ++b.seq);
       e.cmds.push(cmd);
       if (e.cmds.length > 60) e.cmds.splice(0, e.cmds.length - 60);
     }

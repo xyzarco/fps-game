@@ -111,7 +111,7 @@ export class Game {
   }
 
   /** Fase B1: main vs bot tanpa server — LocalGameHost menjalankan sim yang sama. */
-  async connectLocal(nickname: string, opts: { mode?: string; botCount?: number } = {}) {
+  async connectLocal(nickname: string, opts: { mode?: string; botCount?: number; botDifficulty?: string } = {}) {
     this.localHost?.dispose();
     const host = new LocalGameHost();
     host.onJoinWorld = () => { this.connected = true; this.registerServerMessages(); this.registerScoreboard(); };

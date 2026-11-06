@@ -82,7 +82,11 @@ async function play(local = false) {
     ($('loading') as HTMLElement).style.display = 'none';
     ($('lock-ready') as HTMLElement).style.display = 'flex';
     if (local) {
-      await game.connectLocal(nick, { mode, botCount: Number(($('menu-bots') as HTMLInputElement).value) || 7 });
+      await game.connectLocal(nick, {
+        mode,
+        botCount: Number(($('menu-bots') as HTMLInputElement).value) || 7,
+        botDifficulty: ($('menu-diff') as HTMLSelectElement).value,
+      });
     } else {
       await game.connect(nick, { mode, roomCode: code || undefined });
     }

@@ -15,6 +15,8 @@ export interface BotWorldView {
   others: { id: string; x: number; y: number; z: number; height?: number; dead?: boolean; crouch?: boolean }[];
   /** Suara fresh tick ini (tembakan, langkah) dari SoundBus.drain(). */
   sounds?: { x: number; y: number; z: number; radius: number; t: number }[];
+  /** BOTS.md 5.3: id rekan satu tim — tidak jadi target persepsi/combat (TDM). */
+  allies?: Set<string>;
 }
 
 export interface BotState {
@@ -115,10 +117,12 @@ export class BotBrain {
 
     // --- B3 persepsi (bisa dimatikan untuk test roam murni) ---
     if (this.perceptionEnabled) {
-    const targets: PerceptTarget[] = view.others.map((o) => ({
-      id: o.id, x: o.x, y: o.y, z: o.z,
-      height: o.height ?? 1.8, dead: o.dead ?? false, crouch: o.crouch ?? false,
-    }));
+    const targets: PerceptTarget[] = view.others
+      .filter((o) => !view.allies?.has(o.id)) // rekan satu tim bukan target (BOTS.md 5.3)
+      .map((o) => ({
+        id: o.id, x: o.x, y: o.y, z: o.z,
+        height: o.height ?? 1.8, dead: o.dead ?? false, crouch: o.crouch ?? false,
+      }));
     this.perception.updateVision(now, { x: st.sim.x, y: st.sim.y, z: st.sim.z, yaw: st.sim.yaw }, targets, GREYBOX.boxes as AABB[]);
     if (view.sounds) this.perception.hear(view.sounds, { x: st.sim.x, y: st.sim.y, z: st.sim.z }, now);
     }
