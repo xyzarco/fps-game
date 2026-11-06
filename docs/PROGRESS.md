@@ -52,3 +52,12 @@ Menu utama (nickname/mode/room code + localStorage), Quick Play & join by code (
 - Unit test `packages/shared/test/navmesh.test.ts` (bake + path + randomPoint bounds) — suite 15/15 hijau.
 - Masalah terbuka: none blocking.
 - Berikutnya: Fase B1 — GameHost abstraction + LocalGameHost + BotManager + bot dummy.
+
+## Fase B1 — LocalGameHost & Bot Dummy (selesai)
+- `apps/client/src/net/host.ts`: GameHost abstraction — NetClient (multiplayer) & LocalGameHost (offline) duck-typed; Game mengonsumsi interface sama.
+- `apps/client/src/singleplayer/LocalGameHost.ts`: room sim otoritatif di browser TANPA Colyseus — stepMovement/fireWeapon/damage/respawn/kill/score/match flow (warmup→live→ended→siklus) identik GameRoom, latensi 0 tanpa lag comp.
+- `apps/client/src/singleplayer/BotManager.ts`: bot dummy wander acak (idle↔wander tiap 1.2–3.4s), input InputCmd sama dengan pemain, nama gamertag, tidak menembak (B4).
+- Menu: tombol "🤖 PLAY vs BOTS (offline)" + jumlah bot 1–15.
+- Bukti e2e browser (BotTester): join lokal tanpa server ✓ → 8 entitas (1+7 bot) ✓ → phase warmup→live ✓ → bot bergerak (posisi berubah antar snapshot) ✓ → 8 tembakan jarak 4.3 unit: hp 100→20→dead ✓ → killfeed "BotTester ⚔ pistol → Vex" + kills=1 ✓ → respawn 3s (hp 100, protect expired) ✓.
+- Regression: Playwright e2e multiplayer passed (59.8s); typecheck hijau; build sukses; test 15/15.
+- Commit c7c1420 (pushed). Bug fix saat wiring: onJoinWorld di-rebind saat swap host (game.connected).
