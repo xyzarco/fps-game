@@ -7,6 +7,19 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@recast-navigation/core':
+        specifier: 0.44.0
+        version: 0.44.0
+      '@recast-navigation/generators':
+        specifier: 0.44.0
+        version: 0.44.0
+      '@recast-navigation/three':
+        specifier: 0.44.0
+        version: 0.44.0(@types/three@0.187.0)(three@0.170.0)
+      '@recast-navigation/wasm':
+        specifier: 0.44.0
+        version: 0.44.0
     devDependencies:
       '@playwright/test':
         specifier: ^1.65.0
@@ -587,6 +600,21 @@ packages:
   '@pm2/io@6.1.0':
     resolution: {integrity: sha512-IxHuYURa3+FQ6BKePlgChZkqABUKFYH6Bwbw7V/pWU1pP6iR1sCI26l7P9ThUEB385ruZn/tZS3CXDUF5IA1NQ==}
     engines: {node: '>=6.0'}
+
+  '@recast-navigation/core@0.44.0':
+    resolution: {integrity: sha512-N4YO9JBXrGFf3LkrhXmABa7pEwLHvq/gq6o7pLKKu5A4JAp+A5y/9424ps3cVpO1m7ibh3zlXmeewTut9LeXQw==}
+
+  '@recast-navigation/generators@0.44.0':
+    resolution: {integrity: sha512-i2N/sCfuq7IJcSuMmHuX2Uer6oonr9PzFZTrPpwS/e2t+ZpVLHb3DHFY9evKrL2X8diO7sDUDBOpTfW/4Nwucw==}
+
+  '@recast-navigation/three@0.44.0':
+    resolution: {integrity: sha512-7PYy9sAJMK66+0g87xJ4x+jUL9Lv4DrtOwXrJYo1W5YB29f6HjSTVGXw5LooPgqqQcf+RUpoeQaSSul0cvVw/A==}
+    peerDependencies:
+      '@types/three': 0.x.x
+      three: 0.x.x
+
+  '@recast-navigation/wasm@0.44.0':
+    resolution: {integrity: sha512-VNv7xv50cFCdsGd2LdQWZqtLcWXB7nyi4Ilq9t5GMn3GEfCmJEbbeZWSXX5Mgdc4yj71QueTv15V7hPDAQ9gaw==}
 
   '@rollup/rollup-android-arm-eabi@4.67.5':
     resolution: {integrity: sha512-FdWPeulkH+FH+rBzyKBD59tuVN4tRKvmVilSJm0OcnoYsQTpd9UhD78OaPcsYqo2fX6hCwAG0YIjrDLoQ3pR3g==}
@@ -1998,6 +2026,24 @@ snapshots:
       tslib: 1.9.3
     transitivePeerDependencies:
       - supports-color
+
+  '@recast-navigation/core@0.44.0':
+    dependencies:
+      '@recast-navigation/wasm': 0.44.0
+
+  '@recast-navigation/generators@0.44.0':
+    dependencies:
+      '@recast-navigation/core': 0.44.0
+      '@recast-navigation/wasm': 0.44.0
+
+  '@recast-navigation/three@0.44.0(@types/three@0.187.0)(three@0.170.0)':
+    dependencies:
+      '@recast-navigation/core': 0.44.0
+      '@recast-navigation/generators': 0.44.0
+      '@types/three': 0.187.0
+      three: 0.170.0
+
+  '@recast-navigation/wasm@0.44.0': {}
 
   '@rollup/rollup-android-arm-eabi@4.67.5':
     optional: true

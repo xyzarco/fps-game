@@ -45,3 +45,10 @@ Menu utama (nickname/mode/room code + localStorage), Quick Play & join by code (
 **Masalah terbuka:** deploy HTTPS publik butuh host/domain (image `ghcr.io/xyzarco/fps-game/fps-game:latest` siap ditarik; instruksi di README).
 
 ## Fase 7 (Backlog) — tidak dikerjakan sesuai PLAN; dicatat di docs/BACKLOG.md.
+
+## Fase B0 — Riset & Keputusan (selesai)
+- Riset paralel (3 subagent): recast-navigation-js 0.44.0 (MIT) vs three-pathfinding 1.3.0 vs waypoint graph → **ADR-006 recast-navigation-js**; FSM custom → **ADR-007** (yuka 0.7.8 stale); mulberry32 → **ADR-008**; ray-AABB slab (three-mesh-bvh tidak perlu) + tanpa Web Worker → **ADR-009**; aim model manusiawi → **ADR-010** (formula di DECISIONS).
+- Prototipe: `tools/navmesh/bake.mjs` bake solo navmesh dari GREYBOX (1344→816 verts hasil final 1311 verts/437 tris), query computePath/findRandomPoint/findNearestPoly terbukti; output `apps/client/public/assets/maps/greybox.navmesh.json` (78KB).
+- Unit test `packages/shared/test/navmesh.test.ts` (bake + path + randomPoint bounds) — suite 15/15 hijau.
+- Masalah terbuka: none blocking.
+- Berikutnya: Fase B1 — GameHost abstraction + LocalGameHost + BotManager + bot dummy.

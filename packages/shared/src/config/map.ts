@@ -21,8 +21,8 @@ export const GREYBOX: MapData = {
     { minX: 10, minY: 0, minZ: -18, maxX: 14, maxY: 1.5, maxZ: -10 },
     // raised platform + ramp-ish steps
     { minX: -20, minY: 0, minZ: -20, maxX: -12, maxY: 2, maxZ: -12 },
-    { minX: -12, minY: 0, minZ: -20, maxX: -8, maxY: 1, maxZ: -18 },
-    { minX: -8, minY: 0, minZ: -20, maxX: -4, maxY: 0.5, maxZ: -18 },
+    { minX: -12, minY: 0, minZ: -20, maxX: -8, maxY: 1, maxZ: -14 },
+    { minX: -8, minY: 0, minZ: -20, maxX: -4, maxY: 0.5, maxZ: -14 },
     // pillars
     { minX: -2, minY: 0, minZ: 20, maxX: 2, maxY: 4, maxZ: 22 },
     { minX: 18, minY: 0, minZ: -2, maxX: 20, maxY: 4, maxZ: 2 },
