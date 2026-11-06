@@ -1,0 +1,56 @@
+# CI/CD — GitHub Actions (PLAN.md Bagian 2: lint + test + build + deploy)
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # PLAN: lint + test + build
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Unit tests (shared sim)
+        run: pnpm --filter shared test
+
+      - name: Build client
+        run: cd apps/client && npx vite build
+
+      # Deploy via Docker ke registry (push main saja)
+      - name: Build Docker image
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: docker build -t fps-game:${{ github.sha }} .
+
+      # Deploy server butuh host (VPS/Fly/Railway) — butuh secrets per lingkungan.
+      # Cadelan default: push image ke GHCR, deployment manual/diaktifkan nanti.
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image to GHCR
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: |
+          docker tag fps-game:${{ github.sha }} ghcr.io/${{ github.repository }}/fps-game:latest
+          docker push ghcr.io/${{ github.repository }}/fps-game:latest
