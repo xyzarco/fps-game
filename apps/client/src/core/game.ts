@@ -38,6 +38,12 @@ export class Game {
   private fpsFrames = 0;
   private fpsLast = performance.now();
   private lastSnapshot: RemoteSnapshot | null = null;
+  private deathUntil = 0;
+  private deathTimer: ReturnType<typeof setInterval> | null = null;
+  private scoreboard = { el: el('scoreboard'), body: el('sb-body') as HTMLElement, visible: false };
+  private vignette = el('damage-vignette') as HTMLElement;
+  private killfeedEl = el('killfeed') as HTMLElement;
+  private deathOverlay = el('death-overlay') as HTMLElement;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -72,11 +78,103 @@ export class Game {
       this.renderer.setSize(innerWidth, innerHeight);
     });
 
-    this.net.onJoinWorld = () => { this.connected = true; };
+    this.net.onJoinWorld = () => {
+      this.connected = true;
+      this.registerServerMessages();
+      this.registerScoreboard();
+    };
   }
 
   async connect(nickname: string) {
     await this.net.join(nickname.slice(0, 16) || 'Player');
+  }
+
+  /** Server-confirmed events: hitmarker, damage, kill feed, death/respawn. */
+  private registerServerMessages() {
+    this.net.room!.onMessage('hitConfirmed', (data: { target: string; damage: number }) => {
+      this.showHitmarker(data.damage);
+    });
+    this.net.room!.onMessage('damaged', (data: { by: string; amount: number }) => {
+      this.vignette.style.opacity = '1';
+      setTimeout(() => (this.vignette.style.opacity = '0'), 250);
+    });
+    this.net.room!.onMessage('killFeed', (data: { killer: string; victim: string; weapon: string }) => {
+      this.addKillFeed(data.killer, data.victim, data.weapon);
+      // if I'm the victim → death overlay until respawn
+      const me = this.net.latest?.players.get(this.net.sessionId!);
+      if (me && data.victim === me.nickname) this.showDeath();
+    });
+  }
+
+  private showDeath() {
+    this.deathOverlay.style.display = 'flex';
+    if (this.deathTimer) clearInterval(this.deathTimer);
+    const small = document.getElementById('death-timer')!;
+    let left = 3;
+    small.textContent = 'Respawn dalam 3…';
+    this.deathTimer = setInterval(() => {
+      left--;
+      if (left <= 0) {
+        clearInterval(this.deathTimer!);
+        this.deathOverlay.style.display = 'none';
+      } else {
+        small.textContent = `Respawn dalam ${left}…`;
+      }
+    }, 1000);
+  }
+
+  private addKillFeed(killer: string, victim: string, weapon: string) {
+    const div = document.createElement('div');
+    div.innerHTML = `<b>${escapeHtml(killer)}</b> ⚔ ${escapeHtml(weapon)} → <i>${escapeHtml(victim)}</i>`;
+    this.killfeedEl.appendChild(div);
+    while (this.killfeedEl.children.length > 5) this.killfeedEl.firstChild?.remove();
+    setTimeout(() => div.remove(), 5000);
+  }
+
+  private registerScoreboard() {
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Tab') {
+        e.preventDefault();
+        this.scoreboard.visible = true;
+        this.scoreboard.el.style.display = 'block';
+        return;
+      }
+      // weapon switch 1–4
+      const slotIdx = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
+      if (slotIdx >= 0) {
+        const id: WeaponId = (['pistol', 'rifle', 'shotgun', 'sniper'] as WeaponId[])[slotIdx]!;
+        this.switchWeapon(id);
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Tab') {
+        this.scoreboard.visible = false;
+        this.scoreboard.el.style.display = 'none';
+      }
+    });
+  }
+
+  private switchWeapon(id: WeaponId) {
+    if (id === this.weapon || this.reloadUntil !== 0) return;
+    this.weapon = id;
+    this.ammo = WEAPONS[id].magSize;
+    this.reserve = WEAPONS[id].reserveAmmo;
+    this.nextFireAt = performance.now() + 400; // switch delay
+  }
+
+  private updateScoreboard() {
+    if (!this.scoreboard.visible || !this.net.latest) return;
+    const rows = [...this.net.latest.players.entries()]
+      .map(([id, p]) => ({ id, name: p.nickname, hp: p.hp, dead: p.dead }))
+      // kills/deaths read from authoritative schema state directly
+      .map((r) => {
+        const sp = this.net.room!.state.players.get(r.id) as { kills?: number; deaths?: number; nickname?: string } | undefined;
+        return { ...r, kills: sp?.kills ?? 0, deaths: sp?.deaths ?? 0 };
+      })
+      .sort((a, b) => b.kills - a.kills);
+    this.scoreboard.body.innerHTML = rows
+      .map((r) => `<tr${r.id === this.net.sessionId ? ' class="me"' : ''}><td>${escapeHtml(r.name)}${r.dead ? ' 💀' : ''}</td><td>${r.kills}</td><td>${r.deaths}</td></tr>`)
+      .join('');
   }
 
   private buildMap() {
@@ -274,19 +372,9 @@ export class Game {
     });
     this.muzzleFlash.intensity = 8;
     this.addTracer(origin, res.hitPoint ?? res.impactPoint ?? [dir.x * 100, dir.y * 100, dir.z * 100]);
-    if (res.hitPlayer && res.hitPoint) {
-      this.showHitmarker(res.damage);
-      let bestDummy = -1; let bestD = Infinity;
-      aliveDummies.forEach((d, i) => {
-        const dist = (d.sim.x - res.hitPoint![0]) ** 2 + (d.sim.z - res.hitPoint![2]) ** 2;
-        if (dist < bestD) { bestD = dist; bestDummy = i; }
-      });
-      if (bestDummy >= 0) {
-        const d = aliveDummies[bestDummy]!;
-        d.hp = Math.max(0, d.hp - res.damage);
-        if (d.hp === 0) setTimeout(() => { d.hp = 100; }, 3000);
-      }
-      // remote damage: authoritative server only (Fase 3); local hitmarker is cosmetic
+    // Hitmarker & damage hanya dari konfirmasi server (hitConfirmed) — PLAN.md 4.4
+    if (res.hitPlayer) {
+      this.showHitmarker(0); // pending marker tanpa angka; angka muncul saat server konfirmasi
     }
   }
 
@@ -308,20 +396,27 @@ export class Game {
 
   private showHitmarker(dmg: number) {
     const el = this.hud.hitmarker;
-    el.textContent = `✛ ${dmg}`;
+    el.textContent = dmg > 0 ? `✛ ${dmg}` : '✛';
     el.style.opacity = '1';
     setTimeout(() => (el.style.opacity = '0'), 120);
   }
 
   private updateHud() {
-    this.hud.hp.textContent = `HP ${this.net.sessionId ? (this.net.latest?.players.get(this.net.sessionId)?.hp ?? MAX_HP) : MAX_HP}`;
+    const me = this.net.sessionId ? (this.net.latest?.players.get(this.net.sessionId)?.hp ?? MAX_HP) : MAX_HP;
+    this.hud.hp.textContent = `HP ${me}`;
+    this.hud.hp.classList.toggle('low', me <= 30);
     this.hud.ammo.textContent = this.reloadUntil !== 0 ? 'RELOADING…' : `${this.ammo} / ${this.reserve === -1 ? '∞' : this.reserve}`;
     this.hud.weapon.textContent = WEAPONS[this.weapon].name;
     this.hud.ping.textContent = this.connected ? `connected · ${this.remotes.size} remote` : 'offline (sandbox)';
+    this.updateScoreboard();
   }
 }
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
 
 function makeNameplate(text: string): THREE.Sprite {
   const c = document.createElement('canvas');

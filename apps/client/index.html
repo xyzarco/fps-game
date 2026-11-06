@@ -10,10 +10,23 @@
     #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; }
     .panel { position: absolute; padding: 10px 16px; background: rgba(0,0,0,.45); border-radius: 8px; font-weight: 700; }
     #hud-hp { left: 20px; bottom: 20px; font-size: 24px; }
+    #hud-hp.low { color: #ff5555; }
     #hud-ammo { right: 20px; bottom: 20px; font-size: 24px; }
     #hud-weapon { right: 20px; bottom: 64px; font-size: 14px; color: #aab; }
     #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 20px; color: #fff; text-shadow: 0 0 4px #000; }
     #hitmarker { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%) translateY(-24px); font-size: 18px; color: #ffd66b; opacity: 0; transition: opacity .15s; font-weight: 800; }
+    #damage-vignette { position: absolute; inset: 0; box-shadow: inset 0 0 120px rgba(255,0,0,.85); opacity: 0; transition: opacity .4s; }
+    #death-overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(120,0,0,.45); font-size: 28px; font-weight: 800; }
+    #death-overlay small { font-size: 16px; color: #fcc; margin-top: 6px; }
+    #killfeed { position: absolute; right: 20px; top: 16px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+    #killfeed div { background: rgba(0,0,0,.55); padding: 4px 10px; border-radius: 6px; font-size: 13px; }
+    #killfeed b { color: #ffd66b; } #killfeed i { color: #ff8888; font-style: normal; }
+    #scoreboard { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); display: none; background: rgba(0,0,10,.85); border-radius: 10px; padding: 16px 24px; min-width: 340px; }
+    #scoreboard h3 { margin: 0 0 10px; font-size: 16px; color: #ccd; }
+    #scoreboard table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    #scoreboard td, #scoreboard th { padding: 4px 12px; text-align: left; }
+    #scoreboard tr.me { color: #ffd66b; }
+    #scoreboard th { color: #889; font-size: 12px; border-bottom: 1px solid #334; }
     #lock-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); font-size: 20px; flex-direction: column; gap: 8px; }
     #lock-hint small { color: #99a; }
     #fps { position: absolute; left: 20px; top: 16px; font-size: 12px; color: #8f8; background: rgba(0,0,0,.35); padding: 4px 8px; border-radius: 6px; }
@@ -25,12 +38,22 @@
     <div id="hud-ping" style="position:absolute;left:20px;top:44px;font-size:12px;color:#88f;background:rgba(0,0,0,.35);padding:4px 8px;border-radius:6px;">offline</div>
     <div id="crosshair">+</div>
     <div id="hitmarker"></div>
+    <div id="damage-vignette"></div>
+    <div id="killfeed"></div>
+    <div id="scoreboard">
+      <h3>Scoreboard — FFA Deathmatch</h3>
+      <table><thead><tr><th>Player</th><th>Kills</th><th>Deaths</th></tr></thead><tbody id="sb-body"></tbody></table>
+    </div>
+    <div id="death-overlay">
+      <div>KAMU MATI 💀</div>
+      <small id="death-timer">Respawn dalam 3…</small>
+    </div>
     <div id="hud-hp" class="panel">HP 100</div>
     <div id="hud-ammo" class="panel">12 / ∞</div>
     <div id="hud-weapon">Pistol</div>
     <div id="lock-hint">
       <div>Klik untuk main</div>
-      <small>WASD gerak · Mouse bidik · LMB tembak · R reload · Space lompat · Ctrl/C jongkok · Shift jalan</small>
+      <small>WASD gerak · Mouse bidik · LMB tembak · R reload · Space lompat · Ctrl/C jongkok · Shift jalan · Tab scoreboard</small>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>
