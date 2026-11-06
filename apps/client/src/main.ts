@@ -57,6 +57,10 @@ menu.appendChild(settingsRow);
 const urlNick = new URLSearchParams(location.search).get('nick');
 if (urlNick) nickInput.value = urlNick;
 
+// Fase 6 deploy: simpan ?server= ke localStorage agar link shareable tanpa query param berikutnya
+const urlServer = new URLSearchParams(location.search).get('server');
+if (urlServer) localStorage.setItem('fps.server', urlServer);
+
 async function play() {
   const nick = nickInput.value.trim().slice(0, 16) || `P${Math.floor(Math.random() * 900 + 100)}`;
   const mode = modeSel.value;
@@ -81,7 +85,14 @@ async function play() {
     statusEl.textContent = 'Connected ✓';
     menu.style.display = 'none';
   } catch (e) {
-    statusEl.textContent = `Gagal connect: ${(e as Error).message}`;
+    // Fase 6: error detail untuk debugging koneksi (URL server, penyebab umum)
+    const serverUrl = localStorage.getItem('fps.server') ?? new URLSearchParams(location.search).get('server') ?? 'ws://localhost:2567';
+    const detail = (e as Error).message || String(e);
+    const hint = serverUrl.includes('localhost') && location.protocol === 'https:'
+      ? ' — server URL localhost tidak bisa diakses dari HTTPS publik! Tambahkan ?server=wss://... pada URL.'
+      : '';
+    statusEl.textContent = `Gagal connect: ${detail}${hint}`;
+    console.error('[connect] gagal:', { detail, serverUrl, href: location.href, e });
     (document.querySelector('#menu-play') as HTMLButtonElement).disabled = false;
   }
 }
