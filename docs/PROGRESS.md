@@ -81,3 +81,12 @@ Menu utama (nickname/mode/room code + localStorage), Quick Play & join by code (
 - Test `ai-perception.test.ts` (5): FOV depan/belakang ✓, LOS tembus tembok BLOCKED + garis terbuka CLEAR ✓ (kriteria anti-wallhack), reaction time gate ✓, memory decay ✓, hearing radius+noise ✓ — suite 21/21 hijau.
 - In-game: bot investigate aktif (semua bot state investigate, goal navmesh), player di balik central block tidak terlihat oleh bot mana pun (seesMe=false di semua bot, dist 29-36).
 - Fix infrastruktur: server tsconfig moduleResolution NodeNext→bundler (recast types .mjs mismatch); recast deps masuk devDeps shared.
+
+## Fase B4 — Combat (selesai)
+- `packages/shared/src/ai/aim.ts`: aim model manusiawi (ADR-010) — turn clamp per tick (turnSpeed deg/s), aim error Gaussian 2D dgn sigma = base × (1+0.01·dist) ÷ trackingFactor (decay saat tracking), resample 250–400ms, fire gate toleransi angular (2+aimError deg), `pickWeapon` by jarak & ammo (shotgun <12u, sniper >30u, rifle mid, pistol fallback).
+- `BotBrain` state combat & retreat: strafe kiri-kanan berinterval (600–1500ms) skala agresivitas, jaga jarak ideal (mendekat >25u, menjauh <8u), retreat saat HP ≤30 (menjauh dari lastKnown 15u), fire hanya bila reaction lewat + dalam toleransi + target benar2 visible (tanpa wallhack).
+- `BotManager.reportStatus`: host feed hp/ammo aktual ke brain tiap tick (bot tidak membaca internal host).
+- SoundBus: tembakan bot juga diemit (handleFire generik di LocalGameHost).
+- Test `ai-aim.test.ts` (5): turn clamp konvergensi, error decay saat tracking, error naik dgn jarak, fire gate, weapon select — suite 27/27 hijau.
+- Test `ai-combat.test.ts`: headless bot-vs-bot 30s (4 hard vs 4 easy) — kills 3-200 range (duel hidup, bukan aimbot), 0 NaN, 0 out-of-bounds ✓.
+- In-game 35 detik: kill feed 'Vex ⚔ pistol → Rook', skor tersebar (Tango 2/1, Nova 1/1, Onyx 1/0), player ditembak bot (deaths 1), state campur combat/retreat → semua bot combat saat sehat. Kriteria BOTS.md: duel masuk akal ✓, retreat HP rendah ✓, no friendly fire (FF off) ✓.

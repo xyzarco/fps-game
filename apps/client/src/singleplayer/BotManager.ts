@@ -57,6 +57,7 @@ export class BotManager {
       br.sim.yaw = e.sim.yaw; br.sim.pitch = e.sim.pitch;
       br.sim.vx = e.sim.vx; br.sim.vz = e.sim.vz;
       br.sim.height = e.sim.height; br.sim.crouch = e.sim.crouch;
+      b.brain.reportStatus(e.hp, { pistol: e.ammo });
       const cmd = b.brain.update({ others, sounds: BotBrain.soundBus.drain(now) }, now, dt, ++b.seq);
       e.cmds.push(cmd);
       if (e.cmds.length > 60) e.cmds.splice(0, e.cmds.length - 60);
