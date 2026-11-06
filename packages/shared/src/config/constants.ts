@@ -19,3 +19,8 @@ export const RESPAWN_DELAY_MS = 3000;
 export const SPAWN_PROTECT_MS = 2000;
 export const MAX_HP = 100;
 export const MAX_PLAYERS = 16;
+// Fase 4 — match flow
+export const WARMUP_MS = 10_000;
+export const MATCH_TIME_MS = 600_000; // 10 menit
+export const KILL_LIMIT = 25;
+export const SCOREBOARD_PAUSE_MS = 8_000;

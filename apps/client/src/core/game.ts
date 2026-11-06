@@ -85,8 +85,8 @@ export class Game {
     };
   }
 
-  async connect(nickname: string) {
-    await this.net.join(nickname.slice(0, 16) || 'Player');
+  async connect(nickname: string, opts: { mode?: string; roomCode?: string } = {}) {
+    await this.net.join(nickname.slice(0, 16) || 'Player', opts);
   }
 
   /** Server-confirmed events: hitmarker, damage, kill feed, death/respawn. */
@@ -104,6 +104,71 @@ export class Game {
       const me = this.net.latest?.players.get(this.net.sessionId!);
       if (me && data.victim === me.nickname) this.showDeath();
     });
+    this.net.room!.onMessage('chat', (data: { from: string; text: string }) => {
+      this.addChatLine(data.from, data.text);
+    });
+    this.net.room!.onMessage('matchStart', (data: { endsAt: number; mode: string }) => {
+      this.matchEndsAt = data.endsAt;
+      this.hideMatchOverlay();
+      this.addChatLine('system', 'Match dimulai! Good luck 🎯');
+    });
+    this.net.room!.onMessage('matchEnd', (data: { winner: string; scores: { name: string; kills: number; deaths: number }[] }) => {
+      this.showMatchOverlay(data);
+    });
+    this.registerChatInput();
+  }
+
+  private matchEndsAt = 0;
+
+  private registerChatInput() {
+    const input = document.getElementById('chat-text') as HTMLInputElement;
+    const wrap = document.getElementById('chat-input') as HTMLElement;
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Enter' && !this.chatOpen) {
+        this.chatOpen = true;
+        wrap.style.display = 'block';
+        setTimeout(() => input.focus(), 0);
+      } else if (e.key === 'Escape' && this.chatOpen) {
+        this.closeChat(input, wrap);
+      } else if (e.key === 'Enter' && this.chatOpen) {
+        const text = input.value.trim();
+        if (text) this.net.room?.send('chat', { text });
+        input.value = '';
+        this.closeChat(input, wrap);
+      }
+    });
+  }
+
+  private chatOpen = false;
+
+  private closeChat(input: HTMLInputElement, wrap: HTMLElement) {
+    this.chatOpen = false;
+    input.value = '';
+    wrap.style.display = 'none';
+    input.blur();
+  }
+
+  private addChatLine(from: string, text: string) {
+    const log = document.getElementById('chat-log') as HTMLElement;
+    const div = document.createElement('div');
+    div.innerHTML = from === 'system'
+      ? `<i>${escapeHtml(text)}</i>`
+      : `<b>${escapeHtml(from)}:</b> ${escapeHtml(text)}`;
+    log.appendChild(div);
+    while (log.children.length > 6) log.firstChild?.remove();
+    setTimeout(() => div.remove(), 12000);
+  }
+
+  private showMatchOverlay(data: { winner: string; scores: { name: string; kills: number; deaths: number }[] }) {
+    const overlay = document.getElementById('match-overlay') as HTMLElement;
+    const detail = document.getElementById('match-detail') as HTMLElement;
+    detail.textContent = `🏆 ${data.winner}\n` + data.scores.slice(0, 5).map((s, i) => `${i + 1}. ${s.name} — ${s.kills} kill / ${s.deaths} death`).join('\n');
+    overlay.style.display = 'flex';
+    setTimeout(() => (overlay.style.display = 'none'), 8000);
+  }
+
+  private hideMatchOverlay() {
+    (document.getElementById('match-overlay') as HTMLElement).style.display = 'none';
   }
 
   private showDeath() {
@@ -408,6 +473,22 @@ export class Game {
     this.hud.ammo.textContent = this.reloadUntil !== 0 ? 'RELOADING…' : `${this.ammo} / ${this.reserve === -1 ? '∞' : this.reserve}`;
     this.hud.weapon.textContent = WEAPONS[this.weapon].name;
     this.hud.ping.textContent = this.connected ? `connected · ${this.remotes.size} remote` : 'offline (sandbox)';
+    // match phase HUD (from authoritative state)
+    const st = this.net.room?.state as { phase?: string; matchEndsAt?: number; mode?: string; teamScoreA?: number; teamScoreB?: number } | undefined;
+    if (st?.phase) {
+      const matchEl = document.getElementById('hud-match')!;
+      if (st.phase === 'warmup') {
+        matchEl.textContent = 'WARMUP — match segera dimulai…';
+      } else if (st.phase === 'live') {
+        const left = Math.max(0, Math.ceil(((st.matchEndsAt ?? 0) - (this.net.latest?.serverTimeMs ?? Date.now())) / 1000));
+        const mm = Math.floor(left / 60), ss = String(left % 60).padStart(2, '0');
+        matchEl.textContent = st.mode === 'tdm'
+          ? `TDM ${mm}:${ss} · Team A ${st.teamScoreA} — ${st.teamScoreB} Team B`
+          : `FFA ${mm}:${ss} · first to 25`;
+      } else {
+        matchEl.textContent = 'MATCH SELESAI';
+      }
+    }
     this.updateScoreboard();
   }
 }

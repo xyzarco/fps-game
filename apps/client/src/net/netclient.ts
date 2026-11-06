@@ -23,8 +23,12 @@ export class NetClient {
     this.client = new Client(url);
   }
 
-  async join(nickname: string): Promise<void> {
-    this.room = await this.client.joinOrCreate('game', { nickname });
+  async join(nickname: string, opts: { mode?: string; roomCode?: string } = {}): Promise<void> {
+    const roomName = opts.roomCode ? `game_${opts.roomCode.toUpperCase()}` : 'game';
+    this.room = await this.client.joinOrCreate(roomName, {
+      nickname,
+      mode: opts.mode ?? 'ffa',
+    });
     const $ = getStateCallbacks(this.room);
     this.room.onMessage('welcome', (data: { sessionId: string }) => {
       this.sessionId = data.sessionId;

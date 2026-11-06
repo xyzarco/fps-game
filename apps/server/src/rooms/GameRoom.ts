@@ -1,9 +1,11 @@
 // Authoritative GameRoom (Colyseus 0.18): fixed-timestep sim via shared sim, state sync via schema.
 // Fase 3: authoritative hitscan + lag compensation, damage, death/respawn, kill feed, scoring.
+// Fase 4: match flow (warmup→live→ended), FFA/TDM, chat, match restart.
 import { Room, Client } from 'colyseus';
 import { GameStateClass, GameState, PlayerClass, Player } from './GameState.js';
 import {
   TICK_RATE, TICK_MS, SNAPSHOT_RATE, MAX_PLAYERS, MAX_HP, RESPAWN_DELAY_MS, SPAWN_PROTECT_MS,
+  WARMUP_MS, MATCH_TIME_MS, KILL_LIMIT, SCOREBOARD_PAUSE_MS,
   stepMovement, newPlayerSimState, GREYBOX, WEAPONS,
   fireWeapon,
   type InputCmd, type AABB, type WeaponId,
@@ -21,48 +23,55 @@ interface PlayerEntity {
   reserve: number;
   weapon: WeaponId;
   lastFireAt: number;
-  /** Position history for lag compensation: [serverTimeMs, x, y, z]. */
+  /** Position history for lag compensation. */
   history: { t: number; x: number; y: number; z: number; height: number }[];
 }
 
 const world: AABB[] = GREYBOX.boxes;
 const MAX_REWIND_MS = 250;
 const HISTORY_KEEP_MS = 1000;
-/** InputCmd.fire handled only when server tick reaches fire time (rate limit). */
 const MIN_INPUT_INTERVAL_MS = 5; // anti-flood: max ~200 cmds/s per client
+
+const sanitizeNick = (raw: unknown) =>
+  String(raw ?? 'Player').trim().slice(0, 16).replace(/[<>&"']/g, '') || 'Player';
 
 export class GameRoom extends Room<any> {
   declare state: GameState;
   override maxClients = MAX_PLAYERS;
   entities = new Map<string, PlayerEntity>();
+  private delayedRef: { clear: () => void } | null = null;
 
-  override onCreate() {
+  override onCreate(options: { mode?: string } = {}) {
     this.setState(new GameStateClass() as unknown as GameState);
+    this.state.mode = options.mode === 'tdm' ? 'tdm' : 'ffa';
     this.setPatchRate(1000 / SNAPSHOT_RATE);
     this.setSimulationInterval(() => this.step(), TICK_RATE);
+    this.startWarmup();
     this.onMessage('input', (client: Client, data: { cmd: InputCmd }) => {
       const e = this.entities.get(client.sessionId);
       if (!e || typeof data?.cmd?.seq !== 'number') return;
       if (data.cmd.seq <= e.player.lastProcessedSeq) return; // duplicate/replay guard
-      // anti-flood: rate limit cmd arrival per client
-      const now = Date.now();
-      if (e.cmds.length > 0) {
-        const last = e.cmds[e.cmds.length - 1]! as InputCmd & { _recvAt?: number };
-        const lastRecv = (last._recvAt ?? now - 100);
-        if (now - lastRecv < MIN_INPUT_INTERVAL_MS) return;
-        last._recvAt = now;
-      }
+      // anti-flood: batasi ukuran antrean (bukan membuang cmd di tengah — memutus determinisme prediksi)
       e.cmds.push(data.cmd);
-      if (e.cmds.length > 120) e.cmds.splice(0, e.cmds.length - 120);
+      if (e.cmds.length > 240) e.cmds.splice(0, e.cmds.length - 240);
     });
-    console.log('[GameRoom] created');
+    // Fase 4: chat (sanitized)
+    this.onMessage('chat', (client: Client, data: { text: string }) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || typeof data?.text !== 'string') return;
+      const text = data.text.slice(0, 120).replace(/[<>]/g, '').trim();
+      if (!text) return;
+      this.broadcast('chat', { from: p.nickname, text, t: Date.now() });
+    });
+    console.log(`[GameRoom] created (mode=${this.state.mode})`);
   }
 
   override onJoin(client: Client, options: { nickname?: string } = {}) {
-    const nick = String(options?.nickname ?? 'Player').slice(0, 16).replace(/[<>]/g, '');
+    const nick = sanitizeNick(options?.nickname);
     const spawn = GREYBOX.spawns[this.entities.size % GREYBOX.spawns.length] as [number, number, number];
     const p = new PlayerClass() as Player;
     p.nickname = nick;
+    p.team = this.state.mode === 'tdm' ? this.pickTeam() : 0;
     p.x = spawn[0]; p.y = spawn[1]; p.z = spawn[2];
     this.state.players.set(client.sessionId, p);
     this.entities.set(client.sessionId, {
@@ -73,20 +82,86 @@ export class GameRoom extends Room<any> {
       lastFireAt: 0, history: [],
     });
     client.send('welcome', { sessionId: client.sessionId });
-    console.log(`[GameRoom] ${client.sessionId} (${nick}) joined`);
+    this.broadcast('chat', { from: 'system', text: `${nick} joined`, t: Date.now() });
+    console.log(`[GameRoom] ${client.sessionId} (${nick}, team ${p.team}) joined`);
   }
 
   override onLeave(client: Client) {
+    const p = this.state.players.get(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.entities.delete(client.sessionId);
+    if (p) this.broadcast('chat', { from: 'system', text: `${p.nickname} left`, t: Date.now() });
     console.log(`[GameRoom] ${client.sessionId} left`);
   }
+
+  // ---------- match flow ----------
+
+  private startWarmup() {
+    this.state.phase = 'warmup';
+    this.state.phaseEndsAt = Date.now() + WARMUP_MS;
+    this.clock.setTimeout(() => this.startMatch(), WARMUP_MS);
+  }
+
+  private startMatch() {
+    if (this.state.phase === 'live') return;
+    this.state.teamScoreA = 0; this.state.teamScoreB = 0;
+    for (const p of this.state.players.values()) { p.kills = 0; p.deaths = 0; }
+    for (const e of this.entities.values()) {
+      e.hp = MAX_HP; e.deadUntil = 0; e.player.dead = false; e.player.hp = MAX_HP;
+      this.respawn(e);
+    }
+    this.state.phase = 'live';
+    this.state.matchEndsAt = Date.now() + MATCH_TIME_MS;
+    this.broadcast('matchStart', { endsAt: this.state.matchEndsAt, mode: this.state.mode });
+    console.log('[GameRoom] match live');
+  }
+
+  private endMatch() {
+    if (this.state.phase !== 'live') return;
+    this.state.phase = 'ended';
+    this.state.phaseEndsAt = Date.now() + SCOREBOARD_PAUSE_MS;
+    const scores = [...this.state.players.values()]
+      .map((p) => ({ name: p.nickname, kills: p.kills, deaths: p.deaths, team: p.team }))
+      .sort((a, b) => b.kills - a.kills);
+    const winner = this.state.mode === 'tdm'
+      ? (this.state.teamScoreA >= this.state.teamScoreB ? 'Team A' : 'Team B')
+      : (scores[0]?.name ?? '-');
+    this.broadcast('matchEnd', { winner, scores, teamA: this.state.teamScoreA, teamB: this.state.teamScoreB, t: Date.now() });
+    console.log(`[GameRoom] match ended, winner=${winner}`);
+    this.delayedRef = this.clock.setTimeout(() => { this.startWarmup(); this.startMatch(); }, SCOREBOARD_PAUSE_MS);
+  }
+
+  private pickTeam(): number {
+    let a = 0, b = 0;
+    for (const p of this.state.players.values()) p.team === 0 ? a++ : b++;
+    return a <= b ? 0 : 1;
+  }
+
+  private checkMatchEnd() {
+    if (this.state.phase !== 'live') return;
+    const timeUp = Date.now() >= this.state.matchEndsAt;
+    let limitHit = false;
+    if (this.state.mode === 'tdm') {
+      limitHit = this.state.teamScoreA >= KILL_LIMIT || this.state.teamScoreB >= KILL_LIMIT;
+    } else {
+      for (const p of this.state.players.values()) if (p.kills >= KILL_LIMIT) limitHit = true;
+    }
+    if (timeUp || limitHit) this.endMatch();
+  }
+
+  // ---------- simulation ----------
 
   private step() {
     const dt = TICK_MS / 1000;
     const now = Date.now();
     this.state.serverTick++;
     this.state.serverTimeMs = now;
+
+    this.checkMatchEnd();
+    if (this.state.phase === 'ended') {
+      for (const e of this.entities.values()) e.cmds.length = 0; // freeze during scoreboard
+      return;
+    }
 
     // record position history for lag compensation
     for (const e of this.entities.values()) {
@@ -95,7 +170,6 @@ export class GameRoom extends Room<any> {
       while (e.history.length > 2 && e.history[0]!.t < cutoff) e.history.shift();
     }
 
-    // process respawn timers
     for (const e of this.entities.values()) {
       if (e.deadUntil > 0 && now >= e.deadUntil) this.respawn(e);
     }
@@ -104,7 +178,6 @@ export class GameRoom extends Room<any> {
       if (e.deadUntil > 0) continue;
       const cmd = e.cmds.shift();
       if (!cmd) continue;
-      // authoritative sim (shared code with client prediction)
       stepMovement(e.sim, cmd, world, dt);
       e.player.lastProcessedSeq = cmd.seq;
       e.player.x = e.sim.x; e.player.y = e.sim.y; e.player.z = e.sim.z;
@@ -112,7 +185,6 @@ export class GameRoom extends Room<any> {
       e.player.pitch = Math.round(e.sim.pitch * 100);
       e.player.crouch = e.sim.crouch;
 
-      // weapon bookkeeping (authoritative timing)
       e.player.weapon = e.weapon;
       e.player.ammo = e.ammo;
       if (cmd.reload && e.ammo < WEAPONS[e.weapon].magSize && now >= e.reloadUntil) {
@@ -125,7 +197,6 @@ export class GameRoom extends Room<any> {
         if (e.reserve !== -1) e.reserve -= take;
         e.reloadUntil = 0;
       }
-      // authoritative fire handling
       if (cmd.fire && e.ammo > 0 && now >= e.lastFireAt + WEAPONS[e.weapon].fireIntervalMs && e.reloadUntil === 0) {
         this.handleFire(e, cmd, now);
       }
@@ -139,15 +210,14 @@ export class GameRoom extends Room<any> {
     shooter.ammo--;
     shooter.player.ammo = shooter.ammo;
 
-    // view time = server now - one-way latency estimate - interp delay
-    const shooterId = shooter.player === undefined ? '' : this.sessionIdOf(shooter);
-    const shooterRttMs = shooter.cmds.length > 0 ? this.estimateRtt(shooter) : 0;
+    const shooterId = this.sessionIdOf(shooter);
+    const shooterRttMs = 200; // TODO: ping/pong measurement (blueprint default)
     const viewTime = now - Math.min(MAX_REWIND_MS, shooterRttMs / 2 + 100);
 
-    // rewind targets to viewTime
     const targets: { x: number; y: number; z: number; height: number; id: string }[] = [];
     for (const [id, e] of this.entities) {
       if (id === shooterId || e.deadUntil > 0 || now < e.spawnProtectUntil) continue;
+      if (this.state.mode === 'tdm' && e.player.team === shooter.player.team) continue; // no friendly fire
       const pos = this.rewind(e, viewTime) ?? e.sim;
       targets.push({ x: pos.x, y: pos.y, z: pos.z, height: pos.height, id });
     }
@@ -160,12 +230,10 @@ export class GameRoom extends Room<any> {
       -Math.cos(yaw) * Math.cos(pitch),
     ];
 
-    const results: { id: string; part: 'head' | 'body' | 'legs'; damage: number; point: [number, number, number] }[] = [];
+    const results: { id: string; damage: number; point: [number, number, number] }[] = [];
     const targetBodies = targets.map((t) => ({ x: t.x, y: t.y, z: t.z, height: t.height }));
-    let anyImpact: [number, number, number] | null = null;
 
     for (let pellet = 0; pellet < w.pellets; pellet++) {
-      // spread (server applies weapon spread; shooter yaw/pitch are authoritative aim)
       const sp = pellet === 0 ? 0 : (Math.random() - 0.5) * 2 * w.spread;
       const spv = pellet === 0 ? 0 : (Math.random() - 0.5) * 2 * w.spread;
       const d: [number, number, number] = [dir[0] + spv, dir[1] + sp, dir[2]];
@@ -178,33 +246,24 @@ export class GameRoom extends Room<any> {
         return t ? Math.hypot(t.x - origin[0], t.z - origin[2]) : Infinity;
       });
       if (res.hitPlayer && res.hitPoint) {
-        const i = targetBodies.findIndex((p, idx) =>
+        const i = targetBodies.findIndex((p) =>
           Math.abs(p.x - res.hitPoint![0]) + Math.abs(p.z - res.hitPoint![2]) < 0.9,
         );
-        if (i >= 0) results.push({ id: targets[i]!.id, part: res.hitPlayer.part, damage: res.damage, point: res.hitPoint });
-      } else if (res.impactPoint) {
-        anyImpact = res.impactPoint;
+        if (i >= 0) results.push({ id: targets[i]!.id, damage: res.damage, point: res.hitPoint });
       }
     }
 
-    // apply damage (aggregate pellets per target)
-    const dmgById = new Map<string, { dmg: number; part: 'head' | 'body' | 'legs' }>();
-    for (const r of results) {
-      const prev = dmgById.get(r.id);
-      dmgById.set(r.id, { dmg: (prev?.dmg ?? 0) + r.damage, part: r.part });
-    }
-    for (const [id, { dmg }] of dmgById) {
+    const dmgById = new Map<string, number>();
+    for (const r of results) dmgById.set(r.id, (dmgById.get(r.id) ?? 0) + r.damage);
+    for (const [id, dmg] of dmgById) {
       const victim = this.entities.get(id);
       if (!victim || victim.deadUntil > 0 || now < victim.spawnProtectUntil) continue;
       victim.hp = Math.max(0, victim.hp - dmg);
       victim.player.hp = victim.hp;
-      // notify shooter (hitmarker) and victim (damage) — server-confirmed only
       this.sessionOf(shooterId)?.send('hitConfirmed', { target: id, damage: dmg });
       this.sessionOf(id)?.send('damaged', { by: shooterId, amount: dmg });
       if (victim.hp === 0) this.kill(shooterId, id, shooter.weapon);
     }
-    // broadcast tracer end for other clients (cosmetic) — keep minimal: only impact to shooter's own fx are client-side
-    void anyImpact;
   }
 
   private kill(killerId: string, victimId: string, weapon: WeaponId) {
@@ -215,8 +274,13 @@ export class GameRoom extends Room<any> {
     victimE.deadUntil = Date.now() + RESPAWN_DELAY_MS;
     victimE.player.dead = true;
     victimE.player.deaths++;
-    if (killer && killerId !== victimId) killer.kills++;
-    // kill feed broadcast
+    if (killer && killerId !== victimId) {
+      killer.kills++;
+      if (this.state.mode === 'tdm') {
+        if (killer.team === 0) this.state.teamScoreA++;
+        else this.state.teamScoreB++;
+      }
+    }
     this.broadcast('killFeed', {
       killer: killer?.nickname ?? victim.nickname,
       victim: victim.nickname,
@@ -248,12 +312,6 @@ export class GameRoom extends Room<any> {
 
   private sessionOf(id: string): Client | undefined {
     return this.clients.find((c: Client) => c.sessionId === id);
-  }
-
-  /** Estimate RTT via lastProcessedSeq pacing — MVP: use input queue depth as rough proxy (20ms/cmd at 50Hz). */
-  private estimateRtt(_e: PlayerEntity): number {
-    // TODO: ping/pong measurement. For now assume 100ms+interp like blueprint default.
-    return 200;
   }
 
   /** Rewind entity position to time t using history (lag compensation). */

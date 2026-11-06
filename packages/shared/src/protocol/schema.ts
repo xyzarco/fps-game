@@ -35,6 +35,13 @@ export const GameStateClass = schema(
     players: t.map(PlayerClass),
     serverTick: t.uint32().default(0),
     serverTimeMs: t.uint64().default(0),
+    // Fase 4 — match flow: 'warmup' | 'live' | 'ended'
+    phase: t.string().default('warmup'),
+    phaseEndsAt: t.uint64().default(0),
+    matchEndsAt: t.uint64().default(0),
+    mode: t.string().default('ffa'), // 'ffa' | 'tdm'
+    teamScoreA: t.uint16().default(0),
+    teamScoreB: t.uint16().default(0),
   },
   'GameState',
 );
@@ -42,4 +49,10 @@ export type GameState = Schema & {
   players: MapSchema<Player>;
   serverTick: number;
   serverTimeMs: number;
+  phase: string;
+  phaseEndsAt: number;
+  matchEndsAt: number;
+  mode: string;
+  teamScoreA: number;
+  teamScoreB: number;
 };
