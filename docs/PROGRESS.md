@@ -38,10 +38,10 @@ Menu utama (nickname/mode/room code + localStorage), Quick Play & join by code (
 - **Origin check** (`ALLOWED_ORIGINS`, reject di WS upgrade) + **rate limit koneksi** per IP (429)
 - **E2E Playwright** 2 klien (join → cross-visibility → gerak/prediksi → reconciliasi drift<0.5 → scoreboard): **passed**
 - **Load test 160 bot / 10 room** (`apps/client/tools/loadtest.mjs`): tick avg **0.1ms**, max **6.4ms**, **overrun 0%** (kriteria PLAN >90% → 100% ✓), CPU ~14%, RSS 174MB → docs/PERFORMANCE.md
-- **Dockerfile** multi-stage + `.dockerignore` (docker tidak tersedia di env ini — build step = skrip yang sama yang terbukti hijau)
-- **CI/CD**: `.github/workflows/ci.yml` — typecheck + test + build + Docker image → GHCR (push main)
+- **Dockerfile** multi-stage + `.dockerignore` — **terbukti ter-build di CI** (docker build + typecheck + test + vite build hijau)
+- **CI/CD GitHub Actions LIVE**: `.github/workflows/ci.yml` — typecheck + unit test + build client + Docker build + push image ke GHCR — **run #42165634707 success** (fix bertahap: pnpm version duplikat, typescript devDep client, permissions packages:write). Repo: https://github.com/xyzarco/fps-game
 - **Dokumentasi final**: PROTOCOL.md (baru), PERFORMANCE.md (baru), README.md (final), NETCODE.md, BACKLOG.md (baru)
 
-**Masalah terbuka:** deploy HTTPS publik butuh host/domain (Dockerfile + instruksi siap di README); CI deploy step menunggu environment (GHCR push siap otomatis).
+**Masalah terbuka:** deploy HTTPS publik butuh host/domain (image `ghcr.io/xyzarco/fps-game/fps-game:latest` siap ditarik; instruksi di README).
 
 ## Fase 7 (Backlog) — tidak dikerjakan sesuai PLAN; dicatat di docs/BACKLOG.md.
