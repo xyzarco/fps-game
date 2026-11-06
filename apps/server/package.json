@@ -10,7 +10,10 @@
     "lint": "eslint src --max-warnings=0 || true"
   },
   "dependencies": {
-    "@fps/shared": "workspace:*"
+    "@colyseus/schema": "^5.0.45",
+    "@colyseus/ws-transport": "^0.18.4",
+    "@fps/shared": "workspace:*",
+    "colyseus": "^0.18.11"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

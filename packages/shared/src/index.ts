@@ -6,3 +6,4 @@ export * from './sim/movement.js';
 export * from './config/map.js';
 export * from './sim/raycast.js';
 export * from './sim/combat.js';
+export * from './protocol/schema.js';
