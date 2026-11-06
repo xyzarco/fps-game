@@ -5,12 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FPS Arena</title>
   <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #111; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #111; font-family: system-ui, sans-serif; }
     canvas { display: block; }
+    #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; }
+    .panel { position: absolute; padding: 10px 16px; background: rgba(0,0,0,.45); border-radius: 8px; font-weight: 700; }
+    #hud-hp { left: 20px; bottom: 20px; font-size: 24px; }
+    #hud-ammo { right: 20px; bottom: 20px; font-size: 24px; }
+    #hud-weapon { right: 20px; bottom: 64px; font-size: 14px; color: #aab; }
+    #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 20px; color: #fff; text-shadow: 0 0 4px #000; }
+    #hitmarker { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%) translateY(-24px); font-size: 18px; color: #ffd66b; opacity: 0; transition: opacity .15s; font-weight: 800; }
+    #lock-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); font-size: 20px; flex-direction: column; gap: 8px; }
+    #lock-hint small { color: #99a; }
+    #fps { position: absolute; left: 20px; top: 16px; font-size: 12px; color: #8f8; background: rgba(0,0,0,.35); padding: 4px 8px; border-radius: 6px; }
   </style>
 </head>
 <body>
-  <div id="hud"></div>
+  <div id="hud">
+    <div id="fps">-- fps</div>
+    <div id="crosshair">+</div>
+    <div id="hitmarker"></div>
+    <div id="hud-hp" class="panel">HP 100</div>
+    <div id="hud-ammo" class="panel">12 / ∞</div>
+    <div id="hud-weapon">Pistol</div>
+    <div id="lock-hint">
+      <div>Klik untuk main</div>
+      <small>WASD gerak · Mouse bidik · LMB tembak · R reload · Space lompat · Ctrl/C jongkok · Shift jalan</small>
+    </div>
+  </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
