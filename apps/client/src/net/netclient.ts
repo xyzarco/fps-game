@@ -19,8 +19,13 @@ export class NetClient {
   onJoinWorld: () => void = () => {};
   lastError: string | null = null;
 
-  constructor(url = 'ws://localhost:2567') {
-    this.client = new Client(url);
+  constructor(url?: string) {
+    // Fase 6 deploy: URL server dari ?server= param / localStorage / default dev
+    const finalUrl = url
+      ?? new URLSearchParams(location.search).get('server')
+      ?? localStorage.getItem('fps.server')
+      ?? 'ws://localhost:2567';
+    this.client = new Client(finalUrl);
   }
 
   async join(nickname: string, opts: { mode?: string; roomCode?: string } = {}): Promise<void> {

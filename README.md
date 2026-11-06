@@ -33,7 +33,20 @@ node apps/client/tools/loadtest.mjs 10 16 45        # load test 10 room × 16 bo
 docker build -t fps-game .
 docker run -p 2567:2567 -p 2568:2568 -e ALLOWED_ORIGINS='https://yourdomain.com' fps-game
 ```
-TLS/HTTPS wajib via reverse proxy (Caddy/Nginx) — WS jadi WSS otomatis. Client dist (`apps/client/dist`) bisa dideploy ke CDN/static hosting dengan env URL server.
+TLS/HTTPS wajib via reverse proxy (Caddy/Nginx) — WS jadi WSS otomatis. Client dist (`apps/client/dist`) bisa dideploy ke CDN/static hosting.
+
+### Tanpa VPS/domain: Cloudflare Tunnel
+```sh
+# server (WSS publik)
+cloudflared tunnel --url http://127.0.0.1:2567
+# client static (build dulu: cd apps/client && npx vite build)
+cd apps/client/dist && cloudflared tunnel --url http://127.0.0.1:4173
+```
+Buka `https://<client-tunnel>/?server=wss://<server-tunnel>` — URL server bisa juga disimpan di `localStorage.fps.server`.
+Quick tunnel punya URL acak per restart; untuk permanen pakai named tunnel + public hostname di dashboard Cloudflare Zero Trust (tidak perlu buka port apa pun).
+
+### URL server dari client
+Prioritas: argumen `new NetClient(url)` → `?server=` query param → `localStorage.fps.server` → `ws://localhost:2567` (dev).
 
 ## Env server
 - `PORT` (default 2567), metrics di PORT+1

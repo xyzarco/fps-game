@@ -35,3 +35,10 @@ Target PLAN.md Bagian 11: "> 90% tick selesai dalam anggaran waktu" (budget tick
 ## Catatan
 - Reconciliation dengan burst input (90 cmd manual dalam 1 frame) butuh ~6 detik server-time untuk mengonsumsi antrean (60 cmd/s) — drift < 0.5 unit setelah settle. Ini perilaku deterministik yang benar, bukan bug.
 - Metrik yang belum ada: snapshot size per patch & bandwidth per room (estimasi bisa dari msgsIn × payload ~60B).
+
+## Deploy status (Fase 6 + Cloudflare Tunnel)
+
+- **Server publik (WSS)**: verifikasi e2e BERHASIL — browser join via `wss://<tunnel>` ✓
+- **Client publik (HTTPS)**: dist served + tunnel — join end-to-end BERHASIL (PublicJoe connected, 2 klien dlm 1 room: TunnelGuy + PublicJoe) ✓
+- Quick tunnel URL berubah tiap restart — untuk URL permanen pakai **named tunnel** (root `cloudflared` service sudah terpasang di server ini, remote-managed via dashboard Zero Trust: tambahkan 2 public hostname → `http://localhost:2567` dan client static)
+- Client kini mendukung override server: `?server=wss://...` atau `localStorage.fps.server` (default ws://localhost:2567 untuk dev)
