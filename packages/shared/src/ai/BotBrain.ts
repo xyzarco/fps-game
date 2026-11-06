@@ -2,15 +2,18 @@
 // Fase B2: state Roam — path following via navmesh, stuck detection, separation.
 // PRNG ber-seed (ADR-008) agar perilaku reproducible.
 import {
-  newPlayerSimState,
-  type InputCmd, type PlayerSimState,
+  newPlayerSimState, GREYBOX,
+  type InputCmd, type PlayerSimState, type AABB,
 } from '../index.js';
 import { mulberry32, type Rng } from './rng.js';
 import { NavService, type NavVec3 } from './navigation.js';
+import { Perception, DIFFICULTY, SoundBus, type PerceptTarget, type DifficultyParams } from './perception.js';
 
 export interface BotWorldView {
   /** Posisi semua pemain lain (untuk separation & nanti persepsi B3). */
-  others: { id: string; x: number; y: number; z: number }[];
+  others: { id: string; x: number; y: number; z: number; height?: number; dead?: boolean; crouch?: boolean }[];
+  /** Suara fresh tick ini (tembakan, langkah) dari SoundBus.drain(). */
+  sounds?: { x: number; y: number; z: number; radius: number; t: number }[];
 }
 
 export interface BotState {
@@ -27,6 +30,9 @@ export interface BotState {
   recoverUntil: number;
   recoverMX: number;
   recoverMZ: number;
+  /** B3: state machine — roam | investigate | search (combat mulai B4). */
+  state: 'roam' | 'investigate' | 'search';
+  stateUntil: number;
 }
 
 const REPLAN_INTERVAL_MS = 2500;
@@ -39,10 +45,16 @@ export class BotBrain {
   private nav: NavService;
   private rng: Rng;
   state: BotState;
+  perception: Perception;
+  static soundBus = new SoundBus();
+  difficulty: DifficultyParams;
+  perceptionEnabled = true;
 
-  constructor(id: string, spawn: [number, number, number], seed: number, nav: NavService) {
+  constructor(id: string, spawn: [number, number, number], seed: number, nav: NavService, difficulty: keyof typeof DIFFICULTY = 'normal') {
     this.nav = nav;
     this.rng = mulberry32(seed);
+    this.difficulty = DIFFICULTY[difficulty];
+    this.perception = new Perception(this.difficulty, mulberry32(seed ^ 0x9e3779b9));
     this.state = {
       id,
       sim: newPlayerSimState(spawn[0], spawn[1], spawn[2]),
@@ -50,7 +62,18 @@ export class BotBrain {
       lastX: spawn[0], lastZ: spawn[2], stuckSince: 0,
       strafeSign: this.rng() < 0.5 ? 1 : -1,
       recoverUntil: 0, recoverMX: 0, recoverMZ: 0,
+      state: 'roam', stateUntil: 0,
     };
+  }
+
+  /** Path ke titik tertentu (lastKnown / sumber suara). */
+  private gotoPoint(now: number, p: NavVec3) {
+    const from = this.nav.nearestPoint({ x: this.state.sim.x, y: this.state.sim.y, z: this.state.sim.z });
+    if (!from) return;
+    this.state.path = this.nav.findPath(from, p);
+    this.state.pathIdx = 0;
+    this.state.goal = p;
+    this.state.replanAt = now + 1500;
   }
 
   /** Pilih goal roam baru (titik acak navmesh) & hitung path. */
@@ -71,6 +94,46 @@ export class BotBrain {
    */
   update(view: BotWorldView, now: number, dt: number, seq: number): InputCmd {
     const st = this.state;
+
+    // --- B3 persepsi (bisa dimatikan untuk test roam murni) ---
+    if (this.perceptionEnabled) {
+    const targets: PerceptTarget[] = view.others.map((o) => ({
+      id: o.id, x: o.x, y: o.y, z: o.z,
+      height: o.height ?? 1.8, dead: o.dead ?? false, crouch: o.crouch ?? false,
+    }));
+    this.perception.updateVision(now, { x: st.sim.x, y: st.sim.y, z: st.sim.z, yaw: st.sim.yaw }, targets, GREYBOX.boxes as AABB[]);
+    if (view.sounds) this.perception.hear(view.sounds, { x: st.sim.x, y: st.sim.y, z: st.sim.z }, now);
+    }
+    // --- state transitions (BOTS.md 5.1, subset B3) ---
+    const visible = [...this.perception.visible];
+    if (visible.length > 0 && st.state !== 'investigate') {
+      // musuh terlihat → Investigate menuju posisinya (combat aim mulai B4)
+      st.state = 'investigate';
+      const mem = this.perception.memory.get(visible[0]!);
+      if (mem) this.gotoPoint(now, mem.lastKnown);
+    } else if (st.state === 'investigate') {
+      // target hilang dari pandangan → menuju lastKnown, lalu Search
+      const mem = this.perception.mostRecentMemory(now);
+      if (st.pathIdx >= st.path.length) {
+        if (mem) {
+          st.state = 'search';
+          st.stateUntil = now + 3000 + this.rng() * 2000;
+          this.gotoPoint(now, mem.lastKnown);
+        } else {
+          st.state = 'roam';
+        }
+      }
+    } else if (st.state === 'search' && now >= st.stateUntil) {
+      st.state = 'roam';
+      st.goal = null; st.path = [];
+    } else if (st.state === 'roam') {
+      const snd = this.perception.latestSound(now);
+      if (snd) {
+        st.state = 'investigate';
+        this.gotoPoint(now, { x: snd.x, y: snd.y, z: snd.z });
+        this.perception.heardSounds = [];
+      }
+    }
 
     // goal/path: replan saat path habis, stuck, atau belum pernah plan
     if (st.pathIdx >= st.path.length || now >= st.replanAt) this.replan(now);

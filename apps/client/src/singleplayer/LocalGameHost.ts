@@ -11,6 +11,7 @@ import {
 import type { GameHost, HostRoom, HostEvent, HostMessageHandler, HostRoomState } from '../net/host.js';
 import type { RemoteSnapshot } from '../net/netclient.js';
 import { BotManager } from './BotManager.js';
+import { BotBrain } from '@fps/shared';
 
 interface LocalEntity {
   id: string;
@@ -260,6 +261,8 @@ export class LocalGameHost implements GameHost {
     const w = WEAPONS[shooter.weapon];
     shooter.lastFireAt = now;
     shooter.ammo--;
+    // BOTS.md 4.2: tembakan = suara radius besar (bot dengar via SoundBus)
+    BotBrain.soundBus.emit(shooter.sim.x, shooter.sim.y, shooter.sim.z, 45, now);
 
     const targets: { x: number; y: number; z: number; height: number; id: string }[] = [];
     for (const [id, e] of this.entities) {

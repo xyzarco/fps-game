@@ -15,7 +15,9 @@ describe('Fase B2: headless roam', () => {
     const brains: BotBrain[] = [];
     for (let i = 0; i < BOTS; i++) {
       const spawn = GREYBOX.spawns[i % GREYBOX.spawns.length] as [number, number, number];
-      brains.push(new BotBrain(`bot_${i}`, spawn, 1000 + i, nav));
+      const b = new BotBrain(`bot_${i}`, spawn, 1000 + i, nav);
+      b.perceptionEnabled = false; // B2 roam murni: tanpa persepsi (persepsi diuji test B3)
+      brains.push(b);
     }
 
     let now = 1_000_000;

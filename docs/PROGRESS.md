@@ -70,3 +70,14 @@ Menu utama (nickname/mode/room code + localStorage), Quick Play & join by code (
 - Test headless `test/ai-roam.test.ts`: 8 bot × 2 menit sim 60Hz ber-seed — 0 NaN, 0 out-of-bounds, stuck < 2% ✓ (16/16 test hijau).
 - Verifikasi in-game: 7 bot roam 7–10 u/s, 0 bot lambat (<1u/s), goal navmesh berganti-ganti, recovery jalan.
 - Keputusan (DECISIONS): randomPoint ground-only — bot tidak roam ke atas platform (satu sumber kebenaran fisika; platform area pemain).
+
+## Fase B3 — Persepsi & Memori (selesai)
+- `packages/shared/src/ai/perception.ts`:
+  - `inFov` (kerucut yaw), `hasLos` (raycast 3 titik tubuh: kepala/dada/kaki — pakai raycastBoxes shared, tanpa wallhack)
+  - `Perception`: vision ~8-10Hz dgn jitter (di-stagger), reaction time per-target (mular saat pertama terlihat), memory decay (memorySec per kesulitan), hear (radius × hearMul, posisi dgn noise), mostRecentMemory/latestSound
+  - `DIFFICULTY` 4 preset (BOTS.md 6: fov/hear/memory/reaction/turn/aimError/aggressiveness)
+  - `SoundBus`: event suara dari simulasi (tembakan radius 45 di LocalGameHost.handleFire; langkah/lompat menyusul B4)
+- `BotBrain`: state 'roam' | 'investigate' | 'search' — terlihat musuh → investigate lastKnown; hilang → search 3-5s → roam; suara → investigate (BOTS.md 5.1 subset B3).
+- Test `ai-perception.test.ts` (5): FOV depan/belakang ✓, LOS tembus tembok BLOCKED + garis terbuka CLEAR ✓ (kriteria anti-wallhack), reaction time gate ✓, memory decay ✓, hearing radius+noise ✓ — suite 21/21 hijau.
+- In-game: bot investigate aktif (semua bot state investigate, goal navmesh), player di balik central block tidak terlihat oleh bot mana pun (seesMe=false di semua bot, dist 29-36).
+- Fix infrastruktur: server tsconfig moduleResolution NodeNext→bundler (recast types .mjs mismatch); recast deps masuk devDeps shared.
