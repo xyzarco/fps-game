@@ -61,7 +61,7 @@ if (urlNick) nickInput.value = urlNick;
 const urlServer = new URLSearchParams(location.search).get('server');
 if (urlServer) localStorage.setItem('fps.server', urlServer);
 
-async function play() {
+async function play(local = false) {
   const nick = nickInput.value.trim().slice(0, 16) || `P${Math.floor(Math.random() * 900 + 100)}`;
   const mode = modeSel.value;
   const code = codeInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
@@ -81,7 +81,11 @@ async function play() {
     });
     ($('loading') as HTMLElement).style.display = 'none';
     ($('lock-ready') as HTMLElement).style.display = 'flex';
-    await game.connect(nick, { mode, roomCode: code || undefined });
+    if (local) {
+      await game.connectLocal(nick, { mode, botCount: Number(($('menu-bots') as HTMLInputElement).value) || 7 });
+    } else {
+      await game.connect(nick, { mode, roomCode: code || undefined });
+    }
     statusEl.textContent = 'Connected ✓';
     menu.style.display = 'none';
   } catch (e) {
@@ -97,6 +101,7 @@ async function play() {
   }
 }
 
-(document.querySelector('#menu-play') as HTMLButtonElement).addEventListener('click', play);
-nickInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') play(); });
-codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') play(); });
+(document.querySelector('#menu-play') as HTMLButtonElement).addEventListener('click', () => void play());
+(document.querySelector('#menu-play-bots') as HTMLButtonElement).addEventListener('click', () => void play(true));
+nickInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') void play(); });
+codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') void play(); });

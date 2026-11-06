@@ -65,7 +65,10 @@
       </select>
       <label for="menu-code">Room code (opsional — kosong = Quick Play)</label>
       <input id="menu-code" maxlength="6" placeholder="mis. ABC123" style="text-transform:uppercase" />
+      <label for="menu-bots">Bot count (single player)</label>
+      <input id="menu-bots" type="number" min="1" max="15" value="7" />
       <button id="menu-play">▶ PLAY</button>
+      <button id="menu-play-bots" style="margin-top:8px">🤖 PLAY vs BOTS (offline)</button>
       <div class="status" id="menu-status"></div>
     </div>
   </div>

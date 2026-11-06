@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { TICK_MS, PLAYER_HEIGHT, INTERP_DELAY_MS, MAX_HP, stepMovement, newPlayerSimState, fireWeapon, GREYBOX, WEAPONS, type WeaponId, type InputCmd } from '@fps/shared';
 import { InputManager } from './input.js';
 import { NetClient, type RemoteSnapshot } from '../net/netclient.js';
+import type { GameHost } from '../net/host.js';
+import { LocalGameHost } from '../singleplayer/LocalGameHost.js';
 import { audio } from '../audio/audiomanager.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -14,7 +16,9 @@ interface RemoteVisual { mesh: THREE.Mesh; nameplate: THREE.Sprite; name: string
 
 export class Game {
   input: InputManager;
-  net = new NetClient();
+  /** Host aktif: jaringan (NetClient) atau lokal (LocalGameHost, mode vs bots). */
+  net: GameHost = new NetClient();
+  private localHost: LocalGameHost | null = null;
   sim = newPlayerSimState(0, 0, -30);       // predicted local state
   pending: InputCmd[] = [];                 // inputs not yet acked
   connected = false;
@@ -104,6 +108,17 @@ export class Game {
 
   async connect(nickname: string, opts: { mode?: string; roomCode?: string } = {}) {
     await this.net.join(nickname.slice(0, 16) || 'Player', opts);
+  }
+
+  /** Fase B1: main vs bot tanpa server — LocalGameHost menjalankan sim yang sama. */
+  async connectLocal(nickname: string, opts: { mode?: string; botCount?: number } = {}) {
+    this.localHost?.dispose();
+    const host = new LocalGameHost();
+    host.onJoinWorld = () => { this.connected = true; this.registerServerMessages(); this.registerScoreboard(); };
+    this.net = host;
+    this.localHost = host;
+    this.connected = false;
+    await host.join(nickname.slice(0, 16) || 'Player', opts);
   }
 
   /** Server-confirmed events: hitmarker, damage, kill feed, death/respawn. */
