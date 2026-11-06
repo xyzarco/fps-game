@@ -9,3 +9,5 @@
 | lilita_one_regular.ttf (font) | Kenney / Lilita One (SIL OFL 1.1) | https://github.com/KenneyNL/Starter-Kit-FPS | OFL 1.1 | 2026-11-06 |
 
 Catatan: map greybox original (self-made); three.js 0.170 & Colyseus 0.18 (MIT).
+
+| @recast-navigation/core + generators + wasm 0.44.0 | MIT | https://github.com/isaac-mason/recast-navigation-js | Navmesh bot (Fase B0) |

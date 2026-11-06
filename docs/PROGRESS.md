@@ -97,3 +97,10 @@ Menu utama (nickname/mode/room code + localStorage), Quick Play & join by code (
 - Bukti in-game: TDM 6 bot → tim A [player,Vex,Nova,Onyx] vs tim B [Rook,Jinx,Sable]; kill legal antar tim (Jinx→Nova); verifikasi memory bot: targetingAlly kosong di semua 7 entitas ✓; teamScoreA/B bertambah.
 - Suite 27/27 hijau, build sukses.
 - Catatan: Survival/Wave & Practice Range tetap backlog opsional (BOTS.md 'opsional') — dicatat di docs/BACKLOG.md.
+
+## Fase B6 — Polish, Performa & Pengujian (selesai)
+- Benchmark AI headless (Vitest, ber-seed, CI-ready): **16 bot @60Hz → avg 0.135 ms/frame, p95 0.205 ms, max 5.6 ms** — ~0.8% dari budget 16.7 ms/frame (Web Worker tak dibutuhkan, konsisten ADR-009). Tercatat di docs/PERFORMANCE.md.
+- Debug overlay (BOTS.md 10): toggle tombol **B** in-game — panel state + HP semua bot live (`#bot-debug`).
+- docs/BOTS-TUNING.md: tabel parameter 4 kesulitan (reaction/turn/aim error/FOV/hearing/memory/aggressiveness), hasil benchmark, catatan tuning awal.
+- DoD "16 bot @ 60 FPS": sisi AI+sim terbukti headless (0.135 ms AI + loadtest 160 bot server); in-game headless swiftshader 7 fps stabil di 1 bot DAN 15 bot → bottleneck GPU software headless, bukan bot (baseline identik).
+- Suite 28/28 hijau, build sukses.

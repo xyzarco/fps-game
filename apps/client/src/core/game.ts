@@ -93,6 +93,7 @@ export class Game {
     const preset = localStorage.getItem('fps.quality') ?? 'high';
     this.renderer.setPixelRatio(preset === 'low' ? 1 : Math.min(devicePixelRatio, preset === 'medium' ? 1.25 : 2));
 
+    this.setupBotDebug();
     window.addEventListener('resize', () => {
       this.camera.aspect = this.sceneCamera.aspect = innerWidth / innerHeight;
       this.camera.updateProjectionMatrix(); this.sceneCamera.updateProjectionMatrix();
@@ -108,6 +109,32 @@ export class Game {
 
   async connect(nickname: string, opts: { mode?: string; roomCode?: string } = {}) {
     await this.net.join(nickname.slice(0, 16) || 'Player', opts);
+  }
+
+  /** Fase B6: debug overlay bot (toggle key B). */
+  private botDebugEl: HTMLElement | null = null;
+  private botDebugOn = false;
+  setupBotDebug() {
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() !== 'b') return;
+      this.botDebugOn = !this.botDebugOn;
+      if (this.botDebugOn && !this.botDebugEl) {
+        const el = document.createElement('div');
+        el.id = 'bot-debug';
+        el.style.cssText = 'position:fixed;top:70px;right:8px;background:rgba(0,0,0,.7);color:#9f9;font:11px monospace;padding:8px;z-index:50;max-height:70vh;overflow:auto;pointer-events:none';
+        document.body.appendChild(el);
+        this.botDebugEl = el;
+      }
+      if (this.botDebugEl) this.botDebugEl.style.display = this.botDebugOn ? 'block' : 'none';
+    });
+    setInterval(() => {
+      if (!this.botDebugOn || !this.botDebugEl) return;
+      const host = this.net as unknown as { bots?: { bots?: Map<string, { id: string; brain: { state: { state: string; hp: number } } }> } };
+      const bots = host.bots?.bots;
+      if (!bots) { this.botDebugEl.textContent = 'bukan mode bot'; return; }
+      const rows = [...bots.values()].map((b) => `${b.id}: ${b.brain.state.state} hp=${b.brain.state.hp}`).join('\n');
+      this.botDebugEl.textContent = `BOT DEBUG (B)\n${rows}`;
+    }, 250);
   }
 
   /** Fase B1: main vs bot tanpa server — LocalGameHost menjalankan sim yang sama. */

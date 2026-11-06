@@ -42,3 +42,9 @@ Target PLAN.md Bagian 11: "> 90% tick selesai dalam anggaran waktu" (budget tick
 - **Client publik (HTTPS)**: dist served + tunnel — join end-to-end BERHASIL (PublicJoe connected, 2 klien dlm 1 room: TunnelGuy + PublicJoe) ✓
 - Quick tunnel URL berubah tiap restart — untuk URL permanen pakai **named tunnel** (root `cloudflared` service sudah terpasang di server ini, remote-managed via dashboard Zero Trust: tambahkan 2 public hostname → `http://localhost:2567` dan client static)
 - Client kini mendukung override server: `?server=wss://...` atau `localStorage.fps.server` (default ws://localhost:2567 untuk dev)
+
+## AI bot (Fase B6 benchmark, headless Vitest)
+
+- 16 bot @ 60Hz (persepsi ~8-10Hz staggered, pathfinding on-demand): **avg 0.135 ms/frame**, p95 0.205 ms, max 5.6 ms
+- Budget frame 16.7 ms (60 FPS) → AI ≈ 0.8% — Web Worker tidak dibutuhkan (ADR-009)
+- Navmesh bake runtime ~300 ms sekali saat masuk mode bot (di luar frame gameplay)
