@@ -3,11 +3,13 @@ import * as THREE from 'three';
 import { TICK_MS, PLAYER_HEIGHT, INTERP_DELAY_MS, MAX_HP, stepMovement, newPlayerSimState, fireWeapon, GREYBOX, WEAPONS, type WeaponId, type InputCmd } from '@fps/shared';
 import { InputManager } from './input.js';
 import { NetClient, type RemoteSnapshot } from '../net/netclient.js';
+import { audio } from '../audio/audiomanager.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const SENSITIVITY = 0.0022;
 const MAX_PENDING = 120;
 
-interface RemoteVisual { mesh: THREE.Mesh; nameplate: THREE.Sprite; name: string }
+interface RemoteVisual { mesh: THREE.Mesh; nameplate: THREE.Sprite; name: string; lastPos?: [number, number] }
 
 export class Game {
   input: InputManager;
@@ -50,16 +52,24 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
-    this.scene.background = new THREE.Color(0x0f1220);
-    this.scene.fog = new THREE.Fog(0x0f1220, 40, 90);
+    this.scene.background = new THREE.Color(0x2a3550);
+    this.scene.fog = new THREE.Fog(0x2a3550, 40, 95);
     this.camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 300);
     this.sceneCamera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 10);
+    // lighting untuk viewmodel scene (GLB pakai MeshStandardMaterial)
+    this.sceneCamera.add(new THREE.HemisphereLight(0xaebcff, 0x2b2f3a, 1.4));
+    const vmKey = new THREE.DirectionalLight(0xfff2d9, 2.2);
+    vmKey.position.set(0.5, 1, 0.8);
+    this.sceneCamera.add(vmKey);
 
-    const hemi = new THREE.HemisphereLight(0x8fa3ff, 0x202028, 1.1);
+    const hemi = new THREE.HemisphereLight(0xaebcff, 0x2b2f3a, 1.2);
     this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    const sun = new THREE.DirectionalLight(0xfff2d9, 1.7);
     sun.position.set(20, 40, 10);
     this.scene.add(sun);
+    const rim = new THREE.DirectionalLight(0x6ea8ff, 0.5);
+    rim.position.set(-25, 18, -20);
+    this.scene.add(rim);
 
     this.buildMap();
     this.buildDummies(4);
@@ -70,7 +80,13 @@ export class Game {
     this.muzzleFlash.position.set(0.25, -0.18, -0.6);
 
     this.input = new InputManager(canvas);
-    this.input.onLockChange = (l) => { this.hud.lock.style.display = l ? 'none' : 'flex'; };
+    this.input.onLockChange = (l) => {
+      this.hud.lock.style.display = l ? 'none' : 'flex';
+      if (l) { audio.unlock(); void this.loadAssets(); } // autoplay policy: gesture
+    };
+    // quality preset dari settings
+    const preset = localStorage.getItem('fps.quality') ?? 'high';
+    this.renderer.setPixelRatio(preset === 'low' ? 1 : Math.min(devicePixelRatio, preset === 'medium' ? 1.25 : 2));
 
     window.addEventListener('resize', () => {
       this.camera.aspect = this.sceneCamera.aspect = innerWidth / innerHeight;
@@ -97,6 +113,7 @@ export class Game {
     this.net.room!.onMessage('damaged', (data: { by: string; amount: number }) => {
       this.vignette.style.opacity = '1';
       setTimeout(() => (this.vignette.style.opacity = '0'), 250);
+      audio.play('hurt', 0.8);
     });
     this.net.room!.onMessage('killFeed', (data: { killer: string; victim: string; weapon: string }) => {
       this.addKillFeed(data.killer, data.victim, data.weapon);
@@ -222,6 +239,7 @@ export class Game {
   private switchWeapon(id: WeaponId) {
     if (id === this.weapon || this.reloadUntil !== 0) return;
     this.weapon = id;
+    audio.play('switch', 0.6);
     this.ammo = WEAPONS[id].magSize;
     this.reserve = WEAPONS[id].reserveAmmo;
     this.nextFireAt = performance.now() + 400; // switch delay
@@ -275,8 +293,39 @@ export class Game {
     const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.18), new THREE.MeshLambertMaterial({ color: 0x171a24 }));
     barrel.position.set(0.25, -0.17, -0.78);
     g.add(body, barrel);
+    // Fase 5: real GLB viewmodel (Kenney blaster, MIT) digabung di atas placeholder box
+    new GLTFLoader().load('/assets/models/blaster.glb', (gltf) => {
+      const m = gltf.scene;
+      m.scale.setScalar(0.55);
+      m.position.set(0.22, -0.28, -0.55);
+      m.rotation.y = Math.PI; // muzzle forward
+      g.add(m);
+      this.viewmodelGlb = m;
+    }, undefined, () => {/* fallback: keep box viewmodel */});
     return g;
   }
+
+  private viewmodelGlb: THREE.Group | null = null;
+
+  /** Load SFX buffers (called once after first user gesture). */
+  private async loadAssets() {
+    if (this.assetsLoaded) return;
+    this.assetsLoaded = true;
+    try {
+      await Promise.all([
+        audio.load('shot', '/assets/audio/blaster.ogg'),
+        audio.load('shot2', '/assets/audio/blaster_repeater.ogg'),
+        audio.load('jump', '/assets/audio/jump_a.ogg'),
+        audio.load('land', '/assets/audio/land.ogg'),
+        audio.load('step', '/assets/audio/walking.ogg'),
+        audio.load('switch', '/assets/audio/weapon_change.ogg'),
+        audio.load('hurt', '/assets/audio/enemy_hurt.ogg'),
+      ]);
+    } catch { /* non-fatal */ }
+  }
+
+  private assetsLoaded = false;
+  private stepAccum = 0;
 
   start() {
     this.lastTime = performance.now();
@@ -324,7 +373,15 @@ export class Game {
     };
 
     // client-side prediction: apply immediately
+    const wasGrounded = this.sim.grounded;
     stepMovement(this.sim, cmd, GREYBOX.boxes, dt);
+    if (!wasGrounded && this.sim.grounded) audio.play('land', 0.5, 1 + Math.random() * 0.1);
+    else if (wasGrounded && !this.sim.grounded && cmd.jump) audio.play('jump', 0.45);
+    // footsteps sederhana: tiap ~0.4s saat bergerak di tanah
+    if (this.sim.grounded && (cmd.moveX !== 0 || cmd.moveZ !== 0)) {
+      this.stepAccum += dt;
+      if (this.stepAccum > 0.4) { this.stepAccum = 0; audio.play('step', 0.22, 0.9 + Math.random() * 0.2); }
+    } else this.stepAccum = 0;
     this.pending.push(cmd);
     if (this.pending.length > MAX_PENDING) this.pending.shift();
 
@@ -408,6 +465,15 @@ export class Game {
       rv.mesh.visible = !p.dead;
       rv.nameplate.position.set(p.x, p.y + PLAYER_HEIGHT + 0.35, p.z);
       rv.nameplate.visible = !p.dead;
+      // footstep posisional pemain lain: dengar saat mereka dekat & bergerak
+      if (rv.lastPos && !p.dead) {
+        const moved = Math.hypot(p.x - rv.lastPos[0], p.z - rv.lastPos[1]);
+        if (moved > 0.35 && moved < 2 && rv.lastPos) {
+          const cam = this.camera.position;
+          audio.playAt('step', p.x - cam.x, (p.y ?? 0) - cam.y, p.z - cam.z, 8);
+        }
+      }
+      rv.lastPos = [p.x, p.z];
     }
     for (const [id, rv] of this.remotes) {
       if (!seen.has(id)) {
@@ -436,6 +502,7 @@ export class Game {
       return t ? Math.hypot(t.x - origin[0], t.z - origin[2]) : Infinity;
     });
     this.muzzleFlash.intensity = 8;
+    audio.play(this.weapon === 'rifle' ? 'shot2' : 'shot', 0.9, 0.95 + Math.random() * 0.1);
     this.addTracer(origin, res.hitPoint ?? res.impactPoint ?? [dir.x * 100, dir.y * 100, dir.z * 100]);
     // Hitmarker & damage hanya dari konfirmasi server (hitConfirmed) — PLAN.md 4.4
     if (res.hitPlayer) {
@@ -450,6 +517,14 @@ export class Game {
     const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffdd88, transparent: true, opacity: 0.8 }));
     this.scene.add(line);
     this.tracers.push({ line, until: performance.now() + 80 });
+    // VFX: impact spark kecil di titik kena
+    const spark = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0.9 }),
+    );
+    spark.position.set(b[0]!, b[1]!, b[2]!);
+    this.scene.add(spark);
+    this.tracers.push({ line: spark as unknown as THREE.Line, until: performance.now() + 120 });
   }
 
   private updateTracers(now: number) {
