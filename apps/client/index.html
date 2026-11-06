@@ -97,8 +97,15 @@
     <div id="hud-ammo" class="panel">12 / ∞</div>
     <div id="hud-weapon">Pistol</div>
     <div id="lock-hint">
-      <div>Klik untuk main</div>
-      <small>WASD gerak · Mouse bidik · LMB tembak · R reload · 1-4 senjata · Space lompat · Ctrl/C jongkok · Shift jalan · Tab scoreboard · Enter chat</small>
+      <div id="loading" style="display:flex;flex-direction:column;align-items:center;gap:10px">
+        <div>Loading…</div>
+        <div style="width:220px;height:8px;background:#223;border-radius:4px;overflow:hidden"><div id="loading-bar" style="width:0%;height:100%;background:#f97316;transition:width .2s"></div></div>
+        <small id="loading-label">menyiapkan aset…</small>
+      </div>
+      <div id="lock-ready" style="display:none;flex-direction:column;align-items:center;gap:8px">
+        <div>Klik untuk main</div>
+        <small>WASD gerak · Mouse bidik · LMB tembak · R reload · 1-4 senjata · Space lompat · Ctrl/C jongkok · Shift jalan · Tab scoreboard · Enter chat</small>
+      </div>
     </div>
   </div>
   <script type="module" src="/src/main.ts"></script>

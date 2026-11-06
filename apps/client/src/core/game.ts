@@ -5,6 +5,7 @@ import { InputManager } from './input.js';
 import { NetClient, type RemoteSnapshot } from '../net/netclient.js';
 import { audio } from '../audio/audiomanager.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 const SENSITIVITY = 0.0022;
 const MAX_PENDING = 120;
@@ -293,8 +294,12 @@ export class Game {
     const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.18), new THREE.MeshLambertMaterial({ color: 0x171a24 }));
     barrel.position.set(0.25, -0.17, -0.78);
     g.add(body, barrel);
-    // Fase 5: real GLB viewmodel (Kenney blaster, MIT) digabung di atas placeholder box
-    new GLTFLoader().load('/assets/models/blaster.glb', (gltf) => {
+    // Fase 5: real GLB viewmodel (Kenney, MIT) — Draco-compressed; progres → loading screen
+    const loader = new GLTFLoader();
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    loader.setDRACOLoader(draco);
+    loader.load('/assets/models/blaster.glb', (gltf) => {
       const m = gltf.scene;
       m.scale.setScalar(0.55);
       m.position.set(0.22, -0.28, -0.55);
@@ -322,6 +327,28 @@ export class Game {
         audio.load('hurt', '/assets/audio/enemy_hurt.ogg'),
       ]);
     } catch { /* non-fatal */ }
+  }
+
+  /** Load SFX + model dengan progress → loading screen (dipanggil saat connect). */
+  async preload(onProgress?: (p: number, label: string) => void) {
+    const steps = 8; let done = 0;
+    const step = (label: string) => { done++; onProgress?.(done / steps, label); };
+    const sfx: [string, string][] = [
+      ['shot', 'blaster.ogg'], ['shot2', 'blaster_repeater.ogg'], ['jump', 'jump_a.ogg'],
+      ['land', 'land.ogg'], ['step', 'walking.ogg'], ['switch', 'weapon_change.ogg'], ['hurt', 'enemy_hurt.ogg'],
+    ];
+    audio.unlock();
+    for (const [name, file] of sfx) {
+      await audio.load(name, `/assets/audio/${file}`);
+      step(`audio: ${file}`);
+    }
+    await new Promise<void>((resolve) => {
+      const loader = new GLTFLoader();
+      const draco = new DRACOLoader();
+      draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+      loader.setDRACOLoader(draco);
+      loader.load('/assets/models/blaster.glb', () => { step('model: blaster.glb'); resolve(); }, undefined, () => { step('model: fallback'); resolve(); });
+    });
   }
 
   private assetsLoaded = false;
@@ -511,25 +538,45 @@ export class Game {
   }
 
   private addTracer(a: ArrayLike<number>, b: ArrayLike<number>) {
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(a[0], a[1], a[2]), new THREE.Vector3(b[0], b[1], b[2]),
-    ]);
-    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffdd88, transparent: true, opacity: 0.8 }));
-    this.scene.add(line);
+    // Fase 5: object pooling — tracer & spark di-reuse, tanpa alloc/dispose per tembakan
+    let line = this.tracerPool.pop();
+    if (!line) {
+      const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+      line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffdd88, transparent: true, opacity: 0.8 }));
+      this.scene.add(line);
+    }
+    const pos = line.geometry.attributes.position as THREE.BufferAttribute;
+    pos.setXYZ(0, a[0]!, a[1]!, a[2]!);
+    pos.setXYZ(1, b[0]!, b[1]!, b[2]!);
+    pos.needsUpdate = true;
+    line.visible = true;
     this.tracers.push({ line, until: performance.now() + 80 });
     // VFX: impact spark kecil di titik kena
-    const spark = new THREE.Mesh(
-      new THREE.SphereGeometry(0.06, 6, 6),
-      new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0.9 }),
-    );
+    let spark = this.sparkPool.pop();
+    if (!spark) {
+      spark = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 6, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0.9 }),
+      );
+      this.scene.add(spark);
+    }
     spark.position.set(b[0]!, b[1]!, b[2]!);
-    this.scene.add(spark);
+    spark.visible = true;
     this.tracers.push({ line: spark as unknown as THREE.Line, until: performance.now() + 120 });
   }
 
+  private tracerPool: THREE.Line[] = [];
+  private sparkPool: THREE.Mesh[] = [];
+
   private updateTracers(now: number) {
     this.tracers = this.tracers.filter((t) => {
-      if (now > t.until) { this.scene.remove(t.line); t.line.geometry.dispose(); return false; }
+      if (now > t.until) {
+        t.line.visible = false;
+        const obj = t.line as unknown as THREE.Mesh;
+        if (obj.isMesh) this.sparkPool.push(obj);
+        else this.tracerPool.push(t.line);
+        return false;
+      }
       return true;
     });
   }

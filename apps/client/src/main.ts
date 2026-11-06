@@ -67,10 +67,19 @@ async function play() {
   statusEl.textContent = 'Connecting…';
   (document.querySelector('#menu-play') as HTMLButtonElement).disabled = true;
   try {
+    // loading screen dengan progress (Fase 5)
+    const lh = $('lock-hint') as HTMLElement;
+    lh.style.display = 'flex';
+    const bar = $('loading-bar'), label = $('loading-label');
+    await game.preload((p, l) => {
+      bar!.style.width = `${Math.round(p * 100)}%`;
+      label!.textContent = l;
+    });
+    ($('loading') as HTMLElement).style.display = 'none';
+    ($('lock-ready') as HTMLElement).style.display = 'flex';
     await game.connect(nick, { mode, roomCode: code || undefined });
     statusEl.textContent = 'Connected ✓';
     menu.style.display = 'none';
-    ($('lock-hint') as HTMLElement).style.display = 'flex';
   } catch (e) {
     statusEl.textContent = `Gagal connect: ${(e as Error).message}`;
     (document.querySelector('#menu-play') as HTMLButtonElement).disabled = false;

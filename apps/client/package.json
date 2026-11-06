@@ -10,12 +10,13 @@
     "lint": "eslint src --max-warnings=0 || true"
   },
   "dependencies": {
+    "@colyseus/sdk": "^0.18.9",
     "@fps/shared": "workspace:*",
-    "three": "^0.170.0",
-    "@colyseus/sdk": "^0.18.9"
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "@types/three": "^0.187.0",
+    "draco3dgltf": "^1.5.9",
     "vite": "^6"
   }
 }
