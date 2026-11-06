@@ -1,5 +1,6 @@
-// BotManager (BOTS.md 2.3, Fase B1): spawn bot dummy — berdiri/berjalan acak,
-// input PlayerInput sama dengan pemain (diproses sim yang sama). AI penuh di B2+.
+// BotManager (BOTS.md 2.3): spawn bot; B2 = roam navmesh via BotBrain (shared).
+// Input PlayerInput sama dengan pemain (diproses sim yang sama).
+import { BotBrain, NavService, type NavVec3 } from '@fps/shared';
 import type { InputCmd, WeaponId } from '@fps/shared';
 import type { LocalGameHost } from './LocalGameHost.js';
 import type { LocalRoom } from './LocalGameHost.js';
@@ -9,9 +10,13 @@ const BOT_NAMES = [
   'Frost', 'Havoc', 'Iris', 'Juno', 'Kilo', 'Lynx', 'Mirage', 'Drift',
 ];
 
+interface BotEntry { id: string; name: string; team: number; brain: BotBrain; seq: number }
+
 export class BotManager {
-  bots = new Map<string, { id: string; name: string; team: number; state: 'idle' | 'wander'; nextMoveAt: number; moveX: number; moveZ: number; jump: boolean; seq: number; yaw: number }>();
+  bots = new Map<string, BotEntry>();
   private disposed = false;
+  private nav: NavService | null = null;
+  private navReady = false;
 
   constructor(
     private host: LocalGameHost,
@@ -19,56 +24,39 @@ export class BotManager {
     count: number,
     teamMode: 'ffa' | 'tdm' = 'ffa',
   ) {
+    void this.initNav(count, teamMode);
+  }
+
+  /** Bake navmesh async; bot dulu dummy-wander sampai navmesh siap. */
+  private async initNav(count: number, teamMode: 'ffa' | 'tdm') {
+    this.nav = new NavService();
+    await this.nav.init();
+    if (this.disposed) return;
     for (let i = 0; i < count; i++) {
       const name = BOT_NAMES[i % BOT_NAMES.length]! + (i >= BOT_NAMES.length ? String(Math.floor(i / BOT_NAMES.length) + 1) : '');
-      const team = teamMode === 'tdm' ? 1 : 0; // B1: bot jadi tim B saat TDM (pemain tim A)
+      const team = teamMode === 'tdm' ? 1 : 0;
       const e = this.host.addEntity(`bot_${i}`, name, true, team);
-      // posisi entity sudah diset addEntity (spawn rotation)
-      this.bots.set(e.id, {
-        id: e.id, name, team, state: 'idle',
-        nextMoveAt: Date.now() + 1000 + Math.random() * 2000,
-        moveX: 0, moveZ: 0, jump: false, seq: 0, yaw: Math.random() * Math.PI * 2,
-      });
+      const brain = new BotBrain(e.id, [e.sim.x, e.sim.y, e.sim.z], 1000 + i * 7919, this.nav);
+      this.bots.set(e.id, { id: e.id, name, team, brain, seq: 0 });
     }
+    this.navReady = true;
   }
 
   /** Dipanggil tiap tick oleh LocalGameHost.step — generate input untuk tiap bot. */
-  tick(now: number, _dt: number) {
-    if (this.disposed) return;
+  tick(now: number, dt: number) {
+    if (this.disposed || !this.navReady) return;
+    const others = [...this.bots.values()].map((b) => ({ id: b.id, x: b.brain.state.sim.x, y: b.brain.state.sim.y, z: b.brain.state.sim.z }));
     for (const b of this.bots.values()) {
       const e = this.host.entity(b.id);
       if (!e) continue;
-      // ganti arah gerak acak tiap interval (dummy wander — B2 diganti navmesh)
-      if (now >= b.nextMoveAt) {
-        b.state = b.state === 'idle' ? 'wander' : 'idle';
-        b.nextMoveAt = now + 1200 + Math.random() * 2200;
-        if (b.state === 'wander') {
-          const ang = Math.random() * Math.PI * 2;
-          b.moveX = Math.sin(ang);
-          b.moveZ = -Math.cos(ang);
-          b.yaw = ang;
-          b.jump = Math.random() < 0.1;
-        } else {
-          b.moveX = 0; b.moveZ = 0; b.jump = false;
-        }
-      }
       if (e.deadUntil > 0) { b.seq++; continue; }
-
-      const cmd: InputCmd = {
-        seq: ++b.seq,
-        tick: 0,
-        moveX: b.moveX,
-        moveZ: b.moveZ,
-        yaw: b.yaw,
-        pitch: 0,
-        jump: b.jump,
-        crouch: false,
-        walk: false,
-        fire: false, // B1 dummy: tidak menembak (combat mulai B4)
-        reload: false,
-        weaponSlot: null,
-      };
-      // feed langsung ke entity antrean (host memproses di step sama)
+      // sync: brain selalu mengikuti sim entity (host = satu-satunya sim; BOTS.md 2.1)
+      const br = b.brain.state;
+      br.sim.x = e.sim.x; br.sim.y = e.sim.y; br.sim.z = e.sim.z;
+      br.sim.yaw = e.sim.yaw; br.sim.pitch = e.sim.pitch;
+      br.sim.vx = e.sim.vx; br.sim.vz = e.sim.vz;
+      br.sim.height = e.sim.height; br.sim.crouch = e.sim.crouch;
+      const cmd = b.brain.update({ others }, now, dt, ++b.seq);
       e.cmds.push(cmd);
       if (e.cmds.length > 60) e.cmds.splice(0, e.cmds.length - 60);
     }

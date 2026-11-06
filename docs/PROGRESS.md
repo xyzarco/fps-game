@@ -61,3 +61,12 @@ Menu utama (nickname/mode/room code + localStorage), Quick Play & join by code (
 - Bukti e2e browser (BotTester): join lokal tanpa server ✓ → 8 entitas (1+7 bot) ✓ → phase warmup→live ✓ → bot bergerak (posisi berubah antar snapshot) ✓ → 8 tembakan jarak 4.3 unit: hp 100→20→dead ✓ → killfeed "BotTester ⚔ pistol → Vex" + kills=1 ✓ → respawn 3s (hp 100, protect expired) ✓.
 - Regression: Playwright e2e multiplayer passed (59.8s); typecheck hijau; build sukses; test 15/15.
 - Commit c7c1420 (pushed). Bug fix saat wiring: onJoinWorld di-rebind saat swap host (game.connected).
+
+## Fase B2 — Navigasi & Gerak (selesai)
+- `packages/shared/src/ai/rng.ts`: mulberry32 PRNG ber-seed (ADR-008).
+- `packages/shared/src/ai/navigation.ts`: NavService (bake runtime solo navmesh ~300ms; findPath dgn dedup waypoint, randomPoint ground-only y<0.5, randomPointAroundCircle, nearestPoint).
+- `packages/shared/src/ai/BotBrain.ts`: state Roam — path following (waypoint reach 1.0u), replan saat path habis/stuck (bukan berkala — anti zig-zag), turn-speed clamp 220 deg/s (ADR-010), separation steering antar bot (radius 1.6), stuck detection 1s → recovery mundur+strafe 0.5-0.8s + goal baru (BOTS.md 3.4).
+- Arsitektur: brain THINK-ONLY (output InputCmd; tanpa step sim) — host men-step sim satu-satunya (BOTS.md 2.1). BotManager sync brain.sim dari entity tiap tick.
+- Test headless `test/ai-roam.test.ts`: 8 bot × 2 menit sim 60Hz ber-seed — 0 NaN, 0 out-of-bounds, stuck < 2% ✓ (16/16 test hijau).
+- Verifikasi in-game: 7 bot roam 7–10 u/s, 0 bot lambat (<1u/s), goal navmesh berganti-ganti, recovery jalan.
+- Keputusan (DECISIONS): randomPoint ground-only — bot tidak roam ke atas platform (satu sumber kebenaran fisika; platform area pemain).
